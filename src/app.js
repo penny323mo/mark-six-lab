@@ -197,7 +197,9 @@ function startDraw(accelerate) {
     if (accelerate) fast = true;
   } else {
     if (machine.state !== 'idle') resetMachine();
-    fast = accelerate || reducedMotion.matches;
+    fast = accelerate;
+    accumulator = 0;
+    lastFrame = performance.now();
     machine.start();
   }
   renderState();
@@ -205,7 +207,7 @@ function startDraw(accelerate) {
 
 function frame(now) {
   const active = machine.state === 'running';
-  const showDrop = machine.inFeed > 0 && !reducedMotion.matches;
+  const showDrop = machine.inFeed > 0 && (!fast || !reducedMotion.matches);
   const speed = active && fast && !showDrop ? 22 : 1;
   const elapsed = Math.max(0, (now - lastFrame) / 1000);
   accumulator = Math.min(2.75, accumulator + Math.min(showDrop ? 0.34 : 1, elapsed) * speed);
