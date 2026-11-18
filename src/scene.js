@@ -459,25 +459,84 @@ function makeThreeScene(host) {
   }
 
   const navigation = studioCamera(renderer.domElement);
+  let quality = 1;
+  let lastInteractionFrame = 0;
+  let slowFrames = 0;
+  let quickFrames = 0;
+  let closeup = false;
+  let needsDraw = true;
+  let previousMachine;
+  let previousTime = -1;
+  let lastCameraMotion = -Infinity;
+  let bufferWidth = 0, bufferHeight = 0, bufferRatio = 0;
+  const previousEye = new THREE.Vector3();
+  const previousGaze = new THREE.Quaternion();
   function resize() {
     const width = host.clientWidth;
     const height = host.clientHeight;
     if (!width || !height) return;
+    const nativeRatio = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(2000000 / (width * height)));
+    const ratio = nativeRatio * quality;
+    if (width === bufferWidth && height === bufferHeight && ratio === bufferRatio) return;
+    bufferWidth = width; bufferHeight = height; bufferRatio = ratio;
     navigation.resize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(2000000 / (width * height))));
-    renderer.setSize(width, height, false);
+    renderer.transmissionResolutionScale = Math.max(0.65, quality);
+    renderer.setDrawingBufferSize(width, height, ratio);
+    needsDraw = true;
+  }
+
+  function adaptResolution(machine) {
+    const now = performance.now();
+    let next = quality;
+    if (machine.state !== 'running' && now - lastCameraMotion > 500) {
+      lastInteractionFrame = 0;
+      slowFrames = quickFrames = 0;
+      next = 1;
+    } else {
+      const interval = lastInteractionFrame ? now - lastInteractionFrame : 0;
+      lastInteractionFrame = now;
+      slowFrames = interval > 85 ? slowFrames + 1 : 0;
+      quickFrames = interval > 0 && interval < 25 ? quickFrames + 1 : 0;
+      if (slowFrames >= 2) {
+        next = Math.max(closeup ? 0.72 : 0.50, quality - 0.20);
+        slowFrames = 0;
+      } else if (quickFrames > 90) {
+        next = Math.min(1, quality + 0.1);
+        quickFrames = 0;
+      }
+    }
+    if (next !== quality) { quality = next; resize(); }
   }
 
   host.replaceChildren(renderer.domElement);
-  new ResizeObserver(resize).observe(host);
+  new ResizeObserver(() => {
+    resize();
+    if (needsDraw && previousMachine) {
+      renderer.render(scene, navigation.camera);
+      needsDraw = false;
+    }
+  }).observe(host);
   resize();
 
   return {
     mode: '3d',
-    setView: navigation.setView,
+    setView(view) { closeup = view === 'close'; navigation.setView(view); },
     setExplore: navigation.setExplore,
+    setNavigationMode: navigation.setNavigationMode,
+    setStick: navigation.setStick,
     render(machine) {
       navigation.update(machine);
+      const camera = navigation.camera;
+      const moved = previousEye.distanceToSquared(camera.position) > 1e-9
+        || 1 - Math.abs(previousGaze.dot(camera.quaternion)) > 1e-10;
+      if (moved) lastCameraMotion = performance.now();
+      adaptResolution(machine);
+      if (!needsDraw && !moved && previousMachine === machine && previousTime === machine.time) return;
+      needsDraw = false;
+      previousMachine = machine;
+      previousTime = machine.time;
+      previousEye.copy(camera.position);
+      previousGaze.copy(camera.quaternion);
       for (const mesh of ballMeshes.values()) mesh.visible = false;
       for (const ball of machine.balls) {
         const mesh = ballMeshes.get(ball.number);
@@ -529,6 +588,8 @@ function makeCanvasScene(host) {
     mode: '2d',
     setView: navigation.setView,
     setExplore: navigation.setExplore,
+    setNavigationMode: navigation.setNavigationMode,
+    setStick: navigation.setStick,
     render(machine) {
       const { width, height } = canvas;
       if (!context || !width || !height) return;
@@ -654,10 +715,13 @@ export function createMachineScene(host) {
         const fallback = makeCanvasScene(host);
         const preset = document.querySelector('[data-view][aria-pressed="true"]')?.dataset.view ?? 'front';
         fallback.setView(preset);
+        fallback.setNavigationMode(document.querySelector('[data-navigation][aria-pressed="true"]')?.dataset.navigation ?? 'walk');
         fallback.setExplore(exploring);
         view.mode = fallback.mode;
         view.setView = fallback.setView;
         view.setExplore = fallback.setExplore;
+        view.setNavigationMode = fallback.setNavigationMode;
+        view.setStick = fallback.setStick;
         view.render = fallback.render;
         host.dataset.renderer = fallback.mode;
       }

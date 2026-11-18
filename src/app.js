@@ -207,9 +207,10 @@ function frame(now) {
   const active = machine.state === 'running';
   const showDrop = machine.inFeed > 0 && !reducedMotion.matches;
   const speed = active && fast && !showDrop ? 22 : 1;
-  accumulator = Math.min(1.5, accumulator + Math.min(0.25, (now - lastFrame) / 1000) * speed);
+  const elapsed = Math.max(0, (now - lastFrame) / 1000);
+  accumulator = Math.min(2.75, accumulator + Math.min(showDrop ? 0.34 : 1, elapsed) * speed);
   lastFrame = now;
-  const cutoff = performance.now() + 10;
+  const cutoff = performance.now() + Math.min(32, Math.max(10, elapsed * 180));
   let changed = false;
   let released;
   let peak = 0;
@@ -333,6 +334,8 @@ soundButton.addEventListener('click', () => {
 });
 element('music-follow').addEventListener('change', persist);
 document.addEventListener('visibilitychange', () => {
+  lastFrame = performance.now();
+  accumulator = 0;
   if (!effects || !soundEnabled) return;
   if (document.hidden) effects.context.suspend().catch(() => {});
   else effects.context.resume().catch(() => {});
@@ -350,8 +353,77 @@ for (const button of viewButtons) {
 }
 
 const exploreButton = element('explore');
+const navTools = element('navigation-tools');
+const stick = element('walk-stick');
+const consoleButton = element('studio-console');
+const help = element('explore-help');
+const navButtons = [...navTools.querySelectorAll('[data-navigation]')];
+let navMode = 'walk';
+let stickPointer = null;
+let helpTimer;
+
+function showNavigationHelp() {
+  clearTimeout(helpTimer);
+  help.classList.remove('quiet');
+  helpTimer = setTimeout(() => help.classList.add('quiet'), 5500);
+}
+function releaseStick() {
+  stickPointer = null;
+  view.setStick(0, 0);
+  stick.style.setProperty('--thumb-x', '0px');
+  stick.style.setProperty('--thumb-y', '0px');
+}
+function trackStick(event) {
+  if (event.pointerId !== stickPointer) return;
+  const box = stick.getBoundingClientRect();
+  const radius = box.width * 0.33;
+  let dx = event.clientX - box.left - box.width / 2;
+  let dy = event.clientY - box.top - box.height / 2;
+  const cap = Math.min(1, radius / (Math.hypot(dx, dy) || 1));
+  dx *= cap; dy *= cap;
+  view.setStick(dx / radius, -dy / radius);
+  stick.style.setProperty('--thumb-x', dx + 'px');
+  stick.style.setProperty('--thumb-y', dy + 'px');
+}
+stick.addEventListener('pointerdown', event => {
+  if (stickPointer !== null) return;
+  stickPointer = event.pointerId;
+  stick.setPointerCapture(event.pointerId);
+  trackStick(event);
+});
+stick.addEventListener('pointermove', trackStick);
+for (const type of ['pointerup','pointercancel','lostpointercapture']) {
+  stick.addEventListener(type, event => { if (event.pointerId === stickPointer) releaseStick(); });
+}
+window.addEventListener('blur', releaseStick);
+
+function navigationMode(mode) {
+  releaseStick();
+  navMode = mode;
+  view.setNavigationMode(mode);
+  studioDialog.dataset.navMode = mode;
+  for (const button of navButtons) button.setAttribute('aria-pressed', String(button.dataset.navigation === mode));
+  const walking = mode === 'walk';
+  stick.hidden = !studioDialog.matches(':modal') || !walking;
+  help.querySelector('.pointer-help').textContent = walking ? '拖曳望四周 · WASD 行走 · Shift 快行 · Q／E 升降' : '拖曳環繞 · 滾輪拉近指住嘅位置 · 右鍵平移';
+  help.querySelector('.touch-help').textContent = walking ? '左邊搖桿行走 · 右邊拖曳望四周 · 雙指拉近' : '單指環繞 · 雙指平移或縮放';
+  showNavigationHelp();
+}
+for (const button of navButtons) button.addEventListener('click', () => navigationMode(button.dataset.navigation));
+element('studio-home').addEventListener('click', () => {
+  releaseStick();
+  viewButtons.find(button => button.dataset.view === 'front').click();
+  showNavigationHelp();
+});
+function setConsole(open) {
+  studioDialog.dataset.console = open ? 'open' : 'closed';
+  consoleButton.setAttribute('aria-expanded', String(open));
+}
+consoleButton.addEventListener('click', () => setConsole(studioDialog.dataset.console !== 'open'));
 viewHost.addEventListener('studio-navigate', () => {
   for (const button of viewButtons) button.setAttribute('aria-pressed', 'false');
+  clearTimeout(helpTimer);
+  helpTimer = setTimeout(() => help.classList.add('quiet'), 1800);
 });
 
 function enterStudio() {
@@ -361,14 +433,21 @@ function enterStudio() {
   studioDialog.setAttribute('aria-describedby', 'explore-help');
   studioDialog.showModal();
   view.setExplore(true);
+  navigationMode(navMode);
+  setConsole(false);
+  navTools.hidden = false;
   exploreButton.textContent = '離開現場';
   exploreButton.setAttribute('aria-expanded', 'true');
-  element('explore-help').hidden = false;
+  help.hidden = false;
   exploreButton.focus({ preventScroll: true });
 }
 viewHost.addEventListener('click', enterStudio);
 exploreButton.addEventListener('click', () => studioDialog.matches(':modal') ? leaveStudio() : enterStudio());
 function leaveStudio() {
+  releaseStick();
+  clearTimeout(helpTimer);
+  navTools.hidden = true;
+  stick.hidden = true;
   studioDialog.close();
   studioDialog.setAttribute('role', 'region');
   studioDialog.removeAttribute('aria-describedby');
@@ -378,7 +457,7 @@ function leaveStudio() {
   for (const button of viewButtons) button.setAttribute('aria-pressed', String(button.dataset.view === lastPreset));
   exploreButton.textContent = '入現場';
   exploreButton.setAttribute('aria-expanded', 'false');
-  element('explore-help').hidden = true;
+  help.hidden = true;
   drawUntil = performance.now() + 750;
   exploreButton.focus({ preventScroll: true });
 }

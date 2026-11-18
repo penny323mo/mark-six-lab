@@ -706,6 +706,44 @@ body:has(#studio-dialog:modal) { overflow: hidden; }
 .theme-player { min-width: 0; height: 80px; background: #1b2230; border-radius: 10px; overflow: hidden; }
 .theme-player iframe { width: 100%; height: 80px; border: 0; display: block; }
 .rules-modal h3 { font-size: 16px; margin: 17px 0 4px; }
+.navigation-tools {
+  position: absolute; top: 57px; left: 18px; z-index: 3; display: flex; align-items: center;
+  gap: 6px; padding: 3px; border: 1px solid #566d85; border-radius: 9px; background: #101c2deb;
+}
+.navigation-mode { display: flex; border-right: 1px solid #4b5d74; padding-right: 4px; }
+.navigation-tools button {
+  min-height: 32px; padding: 4px 9px; border: 0; border-radius: 5px;
+  background: transparent; color: #d5e1ed; font-size: 12px; font-weight: 650;
+}
+.navigation-tools button:hover { background: #293d54; }
+.navigation-tools button[aria-pressed='true'], .navigation-tools button[aria-expanded='true'] {
+  background: #b8dcf3; color: #102438;
+}
+#studio-dialog:modal .explore-help {
+  top: 101px; left: 18px; transform: none; max-width: calc(100% - 36px); white-space: normal;
+  transition: opacity 220ms ease;
+}
+#studio-dialog:modal .explore-help.quiet { opacity: 0; }
+#studio-dialog:modal[data-console='closed'] .machine-panel { grid-template-rows: minmax(0, 1fr) auto; }
+#studio-dialog:modal[data-console='closed'] .audio-deck,
+#studio-dialog:modal[data-console='closed'] .results { display: none; }
+#studio-dialog:modal[data-console='closed'] .draw-deck { display: flex; justify-content: center; }
+#studio-dialog:modal[data-console='closed'] .draw-controls { gap: 10px; border: 0; padding: 5px 10px; }
+#studio-dialog:modal[data-console='closed'] .draw-controls .button { min-height: 36px; }
+.walk-stick { display: none; }
+@media (pointer: coarse) {
+  .walk-stick:not([hidden]) {
+    position: absolute; bottom: 74px; left: max(17px, env(safe-area-inset-left)); z-index: 3;
+    display: grid; width: 86px; height: 86px; place-items: center; padding: 0;
+    border: 1px solid #e0efffc4; border-radius: 50%; background: #15253f60;
+    box-shadow: 0 1px 9px #111b2b44, inset 0 0 0 8px #1d30484d; touch-action: none;
+  }
+  .walk-stick span { width: 34px; height: 34px; border-radius: 50%; background: #e1eef9da;
+    border: 1px solid #203954; transform: translate(var(--thumb-x,0px),var(--thumb-y,0px)); pointer-events: none; }
+  .navigation-tools { left: 10px; top: 46px; gap: 2px; }
+  .navigation-tools button { min-height: 34px; }
+  #studio-dialog:modal .explore-help { left: 10px; top: 92px; font-size: 11px; }
+}
 @media (max-width: 650px) {
   .audio-deck { grid-template-columns: 1fr auto; padding: 8px 11px; gap: 6px; }
   .music-options { justify-items: end; }

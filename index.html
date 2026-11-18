@@ -41,7 +41,16 @@
               <button type="button" id="explore" aria-haspopup="dialog" aria-controls="studio-dialog" aria-expanded="false">入現場</button>
             </div>
           </div>
-          <p class="explore-help" id="explore-help" hidden><span class="pointer-help">拖曳轉動 · 滾輪縮放 · WASD 移動</span><span class="touch-help">單指轉動 · 雙指平移或縮放</span></p>
+          <div class="navigation-tools" id="navigation-tools" role="group" aria-label="現場導航" hidden>
+            <div class="navigation-mode" role="group" aria-label="移動方式">
+              <button type="button" data-navigation="walk" aria-pressed="true">自由行</button>
+              <button type="button" data-navigation="orbit" aria-pressed="false">環繞機身</button>
+            </div>
+            <button type="button" id="studio-home">返機前</button>
+            <button type="button" id="studio-console" aria-expanded="false" aria-controls="result-deck audio-deck">控制台</button>
+          </div>
+          <p class="explore-help" id="explore-help" hidden><span class="pointer-help">拖曳望四周 · WASD 行走 · Shift 快行 · Q／E 升降</span><span class="touch-help">左邊搖桿行走 · 右邊拖曳望四周 · 雙指拉近</span></p>
+          <button type="button" id="walk-stick" class="walk-stick" aria-label="方向搖桿，拖動行走" hidden><span></span></button>
           <div class="stage-bottom">
             <div class="current-ball" id="current-ball" hidden>
               <span class="ball" id="current-number"></span>
@@ -61,7 +70,7 @@
             <button type="button" class="button secondary" id="quick"><span class="bolt-icon" aria-hidden="true"></span><span id="quick-label">快抽</span></button>
             <button type="button" class="button reset" id="reset"><span aria-hidden="true">↻</span> 重置</button>
           </div>
-          <section class="results" aria-labelledby="results-title">
+          <section class="results" id="result-deck" aria-labelledby="results-title">
             <div class="result-meta">
               <div class="panel-header">
                 <h2 id="results-title">開獎結果</h2>
@@ -79,7 +88,7 @@
             <p class="visually-hidden" id="announcement" role="status" aria-atomic="true"></p>
           </section>
         </div>
-        <section class="audio-deck" aria-label="經典攪珠配樂">
+        <section class="audio-deck" id="audio-deck" aria-label="經典攪珠配樂">
           <div class="music-credit">
             <h2>經典攪珠配樂</h2>
             <p>《Inkpot》<span lang="en">Shocking Blue</span> · 1972 原唱版</p>
