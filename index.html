@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0e141b">
+  <meta name="description" content="香港六合彩 3D 攪珠模擬器。觀察 49 粒球嘅碰撞同出珠，隨機選號或者自選六個號碼對獎。">
+  <title>六合彩攪珠模擬器 · Mark Six Lab</title>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="brand" href="./" aria-label="Mark Six Lab 主頁">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>MARK SIX<span class="brand-lab"> LAB</span></span>
+      </a>
+      <nav aria-label="工具">
+        <button class="utility" id="sound" type="button" aria-pressed="false">
+          <span class="sound-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="sound-label">音效關</span>
+        </button>
+        <button class="utility utility-rules" id="open-rules" type="button">
+          <span class="info-icon" aria-hidden="true">i</span> 玩法與規則
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="intro" aria-labelledby="title">
+      <h1 id="title">六合彩攪珠模擬器</h1>
+      <p>49 粒號碼球，依次抽出 6 個攪出號碼同 1 個特別號碼。</p>
+    </section>
+
+    <div class="workbench">
+      <section class="machine-panel" aria-label="攪珠機">
+        <div class="machine-stage" id="stage">
+          <div class="machine-view" id="machine-view" aria-hidden="true"></div>
+          <div class="stage-top">
+            <span class="machine-state" id="machine-state" data-state="idle"><i aria-hidden="true"></i><span>待機</span></span>
+            <div class="counter" aria-label="腔內球數"><strong id="remaining">49</strong><span>粒</span></div>
+          </div>
+          <div class="stage-bottom">
+            <div class="current-ball" id="current-ball" hidden>
+              <span class="ball" id="current-number"></span>
+              <span><small>最新出珠</small><strong id="current-caption"></strong></span>
+            </div>
+            <div class="view-switch" role="group" aria-label="鏡頭角度">
+              <button type="button" data-view="front" aria-pressed="true">正面</button>
+              <button type="button" data-view="side" aria-pressed="false">斜角</button>
+              <button type="button" data-view="overhead" aria-pressed="false">俯視</button>
+            </div>
+          </div>
+        </div>
+        <div class="draw-deck">
+          <div class="draw-controls" role="group" aria-label="攪珠控制">
+            <button type="button" class="button primary" id="draw"><span class="play-icon" aria-hidden="true"></span><span id="draw-label">開始攪珠</span></button>
+            <button type="button" class="button secondary" id="quick"><span class="bolt-icon" aria-hidden="true"></span><span id="quick-label">快抽</span></button>
+            <button type="button" class="button reset" id="reset"><span aria-hidden="true">↻</span> 重置</button>
+          </div>
+          <section class="results" aria-labelledby="results-title">
+            <div class="result-meta">
+              <div class="panel-header">
+                <h2 id="results-title">開獎結果</h2>
+                <span class="progress" id="result-count">0 / 7</span>
+              </div>
+              <p class="result-note" id="result-note">撳「開始攪珠」逐粒開獎。</p>
+            </div>
+            <div class="result-strip">
+              <div class="result-labels" aria-hidden="true">
+                <span>攪出號碼</span>
+                <span>特別號碼</span>
+              </div>
+              <div class="result-balls" id="result-balls" aria-label="攪出號碼及特別號碼"></div>
+            </div>
+            <p class="visually-hidden" id="announcement" role="status" aria-atomic="true"></p>
+          </section>
+        </div>
+      </section>
+
+      <aside class="draw-sidebar" aria-label="選號同最近紀錄">
+        <section class="panel selection" aria-labelledby="selection-title">
+          <div class="panel-header">
+            <h2 id="selection-title">我的選號</h2>
+            <button class="text-button" id="open-picks" type="button">選擇號碼 <span aria-hidden="true">↗</span></button>
+          </div>
+          <div class="selection-balls" id="selection-balls" aria-label="我選擇嘅號碼"></div>
+          <p class="match-note" id="match-note" aria-live="polite">揀 6 個號碼，開獎後即時對獎。</p>
+        </section>
+
+        <section class="panel history" aria-labelledby="history-title">
+          <div class="panel-header">
+            <h2 id="history-title">最近紀錄</h2>
+            <span class="history-count" id="history-count"></span>
+          </div>
+          <p class="history-empty" id="history-empty"><span class="history-icon" aria-hidden="true"></span>完成一輪攪珠後，結果會記錄喺呢度。</p>
+          <ol id="history-list" class="history-list" aria-label="最近完成嘅模擬攪珠"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="page-footer">
+      <p>獨立模擬工具 · 純供娛樂</p>
+      <a href="https://special.hkjc.com/e-win/zh-HK/betting-info/marksix/prize-qualification/" target="_blank" rel="noopener noreferrer">香港賽馬會規則 <span aria-hidden="true">↗</span></a>
+    </footer>
+  </main>
+
+  <dialog class="modal" id="pick-dialog" aria-labelledby="pick-title">
+    <form method="dialog">
+      <div class="modal-header">
+        <div><h2 id="pick-title">選擇 6 個號碼</h2><p>揀任意 6 粒球，或者用隨機選號。</p></div>
+        <button class="close" value="cancel" aria-label="關閉選號" type="submit" autofocus>×</button>
+      </div>
+      <div class="number-grid" id="number-grid" role="group" aria-label="01 至 49 號球"></div>
+      <div class="pick-tools">
+        <button class="button secondary" type="button" id="auto-pick">隨機選號</button>
+        <button class="text-button" type="button" id="clear-pick">清除</button>
+        <span id="pick-count" class="progress" aria-live="polite">0 / 6</span>
+      </div>
+      <div class="modal-actions">
+        <button class="button secondary" type="submit" value="cancel">取消</button>
+        <button class="button primary" type="submit" value="save" id="save-pick">儲存選號</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal rules-modal" id="rules-dialog" aria-labelledby="rules-title">
+    <form method="dialog">
+      <div class="modal-header">
+        <div><h2 id="rules-title">玩法與規則</h2><p>香港六合彩 · 單式選號</p></div>
+        <button class="close" value="cancel" aria-label="關閉規則" type="submit" autofocus>×</button>
+      </div>
+      <p>喺 01 至 49 號入面揀 6 個唔同號碼。每輪抽出 7 粒球，首 6 粒係攪出號碼，第 7 粒係特別號碼。</p>
+      <table class="prize-table">
+        <thead><tr><th scope="col">獎級</th><th scope="col">命中攪出號碼</th><th scope="col">命中特別號碼</th></tr></thead>
+        <tbody id="prizes"></tbody>
+      </table>
+      <div class="modal-actions rules-actions">
+        <a href="https://www.hkjc.com/chinese/betting/betting_rule.htm" target="_blank" rel="noopener noreferrer">查閱馬會獎券規例 <span aria-hidden="true">↗</span></a>
+        <button class="button secondary" type="submit" value="close">關閉</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>
