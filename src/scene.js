@@ -1,29 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { BALL_NUMBERS, ballColor, formatNumber } from './rules.js';
-import { BALL_RADIUS, CHAMBER_RADIUS, GATE_AXIS, GATE_EXIT, GATE_RADIUS } from './physics.js';
+import { BALL_NUMBERS, MAIN_COUNT, ballColor, formatNumber } from './rules.js';
+import { ARM_RADIUS, BALL_RADIUS, CHAMBER_RADIUS, POCKET_Y, TRACK_END, TRACK_RADIUS,
+  armPoints, railPosition } from './physics.js';
 
-const pigments = { red: '#cf2a40', blue: '#2069c7', green: '#12875e' };
-const gateAxis = new THREE.Vector3(...GATE_AXIS);
-const up = new THREE.Vector3(0, 1, 0);
-const gateRotation = new THREE.Quaternion().setFromUnitVectors(up, gateAxis);
-const outlet = gateAxis.clone().multiplyScalar(GATE_EXIT);
-const tubeExit = new THREE.Vector3(2.36, -1.67, 0.77);
-const track = new THREE.CubicBezierCurve3(
-  outlet,
-  outlet.clone().addScaledVector(gateAxis, 0.83),
-  new THREE.Vector3(2.76, -0.58, 0.96),
-  tubeExit,
-);
-const travelPosition = new THREE.Vector3();
-const travelStartOffset = new THREE.Vector3();
-
-function getReleasedPosition(ball, progress) {
-  // The pickup flange funnels the ball onto the centerline of the clear chute.
-  track.getPointAt(progress, travelPosition);
-  travelStartOffset.set(ball.x, ball.y, ball.z).sub(outlet);
-  return travelPosition.addScaledVector(travelStartOffset, Math.max(0, 1 - progress * 6));
-}
+const pigments = { red: '#cc1527', blue: '#116bb2', green: '#328731' };
 
 function ballTexture(number) {
   const canvas = document.createElement('canvas');
@@ -35,24 +16,28 @@ function ballTexture(number) {
 
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.font = '800 35px Arial, sans-serif';
-  for (const center of [0, 128, 256, 384, 512]) {
-    context.fillStyle = '#fbf6e8';
-    context.beginPath();
-    context.arc(center, 123, 37, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = '#fff9e8b3';
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(center, 123, 42, 0, Math.PI * 2);
-    context.stroke();
-    context.fillStyle = '#102034';
-    context.fillText(formatNumber(number), center, 124);
+  context.font = 'bold 39px Arial, sans-serif';
+  for (const [row, y] of [[0, 64],[1, 134],[2,204]]) {
+    for (let col = -1; col < 6; col++) {
+      const cx = (col + (row % 2) / 2) * 114;
+      context.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const a = k * Math.PI * 2 / 5 - Math.PI / 2;
+        const x = cx + Math.cos(a) * 42;
+        const py = y + Math.sin(a) * 32;
+        if (k === 0) context.moveTo(x, py);
+        else context.lineTo(x, py);
+      }
+      context.closePath();
+      context.fillStyle = '#fffdf6';
+      context.fill();
+      context.strokeStyle = '#eee5d9';
+      context.lineWidth = 1.5;
+      context.stroke();
+      context.fillStyle = '#121c23';
+      context.fillText(String(number), cx, y + 1);
+    }
   }
-
-  context.fillStyle = '#ffffff73';
-  context.fillRect(0, 61, 512, 2);
-  context.fillRect(0, 184, 512, 2);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
@@ -74,13 +59,6 @@ function torus(parent, radius, width, material, z = 0, arc = Math.PI * 2, rotati
 
 function cylinder(parent, top, bottom, height, material, x, y, z) {
   return place(new THREE.CylinderGeometry(top, bottom, height, 64), material, parent, x, y, z);
-}
-
-function axisCylinder(parent, top, bottom, length, material, offset, open = false) {
-  const mesh = place(new THREE.CylinderGeometry(top, bottom, length, 48, 1, open), material, parent);
-  mesh.position.copy(gateAxis).multiplyScalar(offset);
-  mesh.quaternion.copy(gateRotation);
-  return mesh;
 }
 
 function glassMaterial() {
@@ -115,254 +93,185 @@ function glassMaterial() {
   });
 }
 
+function tubeBetween(parent, from, to, radius, material, open = false) {
+  const start = new THREE.Vector3(from.x, from.y, from.z);
+  const direction = new THREE.Vector3(to.x, to.y, to.z).sub(start);
+  const mesh = place(new THREE.CylinderGeometry(radius, radius, direction.length(), 24, 1, open), material, parent);
+  mesh.position.copy(start).addScaledVector(direction, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function printPanel(text, size, ink, spacing = 0) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 184;
+  const ctx = canvas.getContext('2d');
+  ctx.font = size + 'px Arial, "Noto Sans CJK TC", sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = ink;
+  const letters = Array.from(text);
+  const total = letters.reduce((n, c) => n + ctx.measureText(c).width, 0) + spacing * (letters.length - 1);
+  let x = (canvas.width - total) / 2;
+  for (const c of letters) {
+    ctx.fillText(c, x, 94);
+    x += ctx.measureText(c).width + spacing;
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false });
+}
+
 function makeStudio(scene) {
-  scene.background = new THREE.Color(0x142d54);
-  scene.fog = new THREE.FogExp2(0x315785, 0.026);
-  const floorY = -2.51;
-  const wallRadius = 13;
-  const wallAngle = Math.PI * 0.45;
-  const arc = Math.PI * 1.1;
-  const backdrop = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    vertexShader: `
-      varying vec3 worldPoint;
-      void main() {
-        worldPoint = (modelMatrix * vec4(position, 1.0)).xyz;
-        gl_Position = projectionMatrix * viewMatrix * vec4(worldPoint, 1.0);
-      }
-    `,
-    fragmentShader: `
-      varying vec3 worldPoint;
-      void main() {
-        float floorWash = exp(-pow((worldPoint.y + 0.5) * 0.68, 2.0));
-        float stageWash = exp(-pow((worldPoint.x + 1.9) * 0.14, 2.0));
-        float panels = smoothstep(0.985, 0.999, abs(sin(worldPoint.x * 2.2)));
-        float height = smoothstep(-2.0, 4.9, worldPoint.y);
-        vec3 color = mix(vec3(0.19, 0.29, 0.45), vec3(0.075, 0.13, 0.23), height);
-        color += vec3(0.17, 0.28, 0.42) * stageWash * floorWash;
-        color *= 1.0 - panels * 0.12;
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `,
-  });
-  const makeWallBand = (radius, height, y, material) => place(
-    new THREE.CylinderGeometry(radius, radius, height, 110, 1, true, wallAngle, arc),
-    material, scene, 0, y, 0,
-  );
-  makeWallBand(wallRadius, 13, 3.7, backdrop);
-  const darkBands = new THREE.MeshStandardMaterial({ color: 0x17263d, metalness: 0.35,
-    roughness: 0.53, side: THREE.BackSide });
-  const wallLight = new THREE.MeshBasicMaterial({ color: 0x9cc8ff, side: THREE.BackSide });
-  const wallBlue = new THREE.MeshBasicMaterial({ color: 0x355b91, side: THREE.BackSide });
-  makeWallBand(wallRadius - 0.12, 0.46, -1.88, darkBands);
-  makeWallBand(wallRadius - 0.16, 0.046, -1.63, wallLight);
-  makeWallBand(wallRadius - 0.14, 0.028, -2.09, wallBlue);
-  makeWallBand(wallRadius - 0.19, 0.16, 2.88, darkBands);
-  makeWallBand(wallRadius - 0.21, 0.031, 2.97, wallBlue);
-  makeWallBand(wallRadius - 0.14, 0.034, 4.45, wallLight);
-
-  const tile = new THREE.MeshStandardMaterial({ color: 0x293e5e, metalness: 0.28, roughness: 0.45 });
-  const emptyFloor = place(new THREE.PlaneGeometry(70, 70), tile, scene, 0, floorY - 0.2, 0);
-  emptyFloor.rotation.x = -Math.PI / 2;
-  emptyFloor.receiveShadow = true;
-
-  const riserMaterial = new THREE.MeshStandardMaterial({ color: 0x152139, metalness: 0.54, roughness: 0.38 });
-  const riserTop = new THREE.MeshStandardMaterial({ color: 0x57759a, metalness: 0.30, roughness: 0.35 });
-  const riser = cylinder(scene, 5.55, 5.65, 0.18, riserMaterial, 0, floorY - 0.113, 0);
-  riser.receiveShadow = true;
-  const stageSurface = cylinder(scene, 5.51, 5.51, 0.026, riserTop, 0, floorY - 0.014, 0);
-  stageSurface.receiveShadow = true;
-
-  const stageLight = new THREE.MeshBasicMaterial({ color: 0xb3daff, toneMapped: false });
-  const stageAccent = new THREE.MeshBasicMaterial({ color: 0x76a4d8 });
-  for (const [radius, width, color] of [
-    [3.30, 0.011, stageAccent], [3.47, 0.018, stageLight], [4.78, 0.010, stageAccent],
-    [5.31, 0.027, stageLight], [5.46, 0.012, stageAccent],
-  ]) {
-    const ring = place(new THREE.RingGeometry(radius - width, radius + width, 144), color, scene, 0, floorY + 0.005, 0);
-    ring.rotation.x = -Math.PI / 2;
+  scene.background = new THREE.Color(0xb9b7c4);
+  const floorY = -3.12;
+  const wallRadius = 9.7;
+  const wallStart = Math.PI * 0.43;
+  const sweep = Math.PI * 1.14;
+  function wall(radius, height, y, material) {
+    return place(new THREE.CylinderGeometry(radius, radius, height, 120, 1, true, wallStart, sweep),
+      material, scene, 0, y, 0);
   }
+  const wallCanvas = document.createElement('canvas');
+  wallCanvas.width = 16;
+  wallCanvas.height = 512;
+  const ctx = wallCanvas.getContext('2d');
+  const wash = ctx.createLinearGradient(0, 0, 0, 512);
+  for (const [stop, color] of [[0, '#aaa7b2'], [0.35, '#d0c9c5'], [0.65, '#c6bfc4'],
+    [0.82, '#aeabc6'], [0.94, '#8a91df'], [1, '#8485e4']]) wash.addColorStop(stop, color);
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, 16, 512);
+  const texture = new THREE.CanvasTexture(wallCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  wall(wallRadius, 11, 3.97, new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, toneMapped: false }));
+  const wallFinish = color => new THREE.MeshStandardMaterial({ color, roughness: 0.64, side: THREE.BackSide });
+  wall(wallRadius - 0.04, 0.21, -1.60, wallFinish(0xe0dce1));
+  wall(wallRadius - 0.07, 0.28, -1.84, wallFinish(0x24232d));
+  wall(wallRadius - 0.12, 0.10, -2.03, wallFinish(0xc7c8d0));
+  wall(wallRadius - 0.14, 0.40, -2.29, wallFinish(0x292734));
+  wall(wallRadius - 0.18, 0.65, -2.82, wallFinish(0x9fa2b2));
 
-  for (const side of [-1, 1]) {
-    const bar = place(new THREE.BoxGeometry(0.065, 3.25, 0.055), wallLight, scene, side * 6.5, 0.27, -10.83);
-    bar.rotation.z = side * -0.16;
-    place(new THREE.BoxGeometry(0.027, 2.63, 0.042), wallBlue, scene, side * 6.84, 0.34, -10.72)
-      .rotation.z = bar.rotation.z;
+  const words = [printPanel('MARK SIX', 117, '#444354', 20), printPanel('六合彩', 114, '#454456', 19)];
+  const panel = new THREE.PlaneGeometry(4.88, 0.90);
+  for (let row = 0; row < 3; row++) {
+    for (let col = -4; col <= 4; col++) {
+      const angle = (col + (row % 2) * 0.42) * 0.49;
+      const material = words[Math.abs(col + row) % 2];
+      const board = place(panel, material, scene, Math.sin(angle) * 9.56,
+        3.06 - row * 1.57, -Math.cos(angle) * 9.56);
+      board.rotation.y = -angle;
+    }
   }
-
-  const rig = new THREE.Group();
-  scene.add(rig);
-  torus(rig, 6.3, 0.065, riserMaterial, 0, Math.PI).rotation.set(Math.PI / 2, 0, Math.PI);
-  torus(rig, 6.18, 0.025, wallLight, 0, Math.PI).rotation.set(Math.PI / 2, 0, Math.PI);
-  rig.position.y = 4.12;
-  rig.position.z = -2.2;
-
-  const white = new THREE.MeshBasicMaterial({ color: 0xe8f7ff, toneMapped: false });
-  for (const offset of [-3.8, -1.55, 1.60, 3.78]) {
-    const light = cylinder(scene, 0.18, 0.24, 0.30, riserMaterial, offset, 3.66, -5.2);
-    light.rotation.z = offset * 0.07;
-    const lamp = cylinder(scene, 0.16, 0.18, 0.018, white, offset + offset * 0.012, 3.50, -5.2);
-    lamp.rotation.copy(light.rotation);
+  const floor = place(new THREE.PlaneGeometry(60,60), new THREE.MeshStandardMaterial({
+    color: 0x646382, roughness: 0.56, metalness: 0.13,
+  }), scene, 0, floorY - 0.015, 0);
+  floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
+  const line = new THREE.MeshBasicMaterial({ color: 0x88889f });
+  for (const r of [3.70, 5.12]) {
+    const ring = place(new THREE.RingGeometry(r, r + 0.012, 120), line, scene, 0, floorY, 0);
+    ring.rotation.x = -Math.PI/2;
   }
-
-  const bloom = document.createElement('canvas');
-  bloom.width = bloom.height = 128;
-  const context = bloom.getContext('2d');
-  const pool = context.createRadialGradient(64, 64, 5, 64, 64, 64);
-  pool.addColorStop(0, '#b6e2ff60');
-  pool.addColorStop(0.48, '#80b8fb42');
-  pool.addColorStop(1, '#629cf800');
-  context.fillStyle = pool;
-  context.fillRect(0, 0, 128, 128);
-  const bloomTexture = new THREE.CanvasTexture(bloom);
-  const lightPool = place(new THREE.PlaneGeometry(8.5, 8.5), new THREE.MeshBasicMaterial({
-    map: bloomTexture, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-  }), scene, -0.25, floorY + 0.014, -0.9);
-  lightPool.rotation.x = -Math.PI / 2;
-  lightPool.renderOrder = 1;
 }
 
 function makeMachine(scene) {
   const shell = new THREE.Group();
   scene.add(shell);
-  const dark = new THREE.MeshStandardMaterial({ color: 0x202d3d, metalness: 0.64, roughness: 0.34 });
-  const steel = new THREE.MeshStandardMaterial({ color: 0x748a9e, metalness: 0.92, roughness: 0.27 });
-  const silver = new THREE.MeshStandardMaterial({ color: 0xd0dce5, metalness: 0.62, roughness: 0.24 });
-  const ceramic = new THREE.MeshStandardMaterial({ color: 0xd5e4ec, metalness: 0.25, roughness: 0.32 });
-  const bright = new THREE.MeshBasicMaterial({ color: 0xe3f6ff, toneMapped: false });
-  const ice = new THREE.MeshBasicMaterial({ color: 0x91ceff, toneMapped: false });
-  const dim = new THREE.MeshBasicMaterial({ color: 0x4f8bb8, toneMapped: false });
+  const enamel = new THREE.MeshStandardMaterial({ color: 0xf2f1ef, roughness: 0.30, metalness: 0.12 });
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xb8bbca, roughness: 0.18, metalness: 0.87 });
+  const graphite = new THREE.MeshStandardMaterial({ color: 0x353840, roughness: 0.32, metalness: 0.65 });
+  const acrylic = new THREE.MeshPhysicalMaterial({ color: 0xc9d9ef, roughness: 0.10, metalness: 0.05,
+    transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
+  const lip = new THREE.MeshBasicMaterial({ color: 0xdce5f4, transparent: true, opacity: 0.67, depthWrite: false });
+  const lamp = new THREE.MeshBasicMaterial({ color: 0xfffcf5, toneMapped: false });
+  const glow = new THREE.MeshBasicMaterial({ color: 0xff4228, toneMapped: false });
+  const liftLight = new THREE.MeshBasicMaterial({ color: 0xe3fcff, toneMapped: false });
+  const clearBowl = place(new THREE.SphereGeometry(CHAMBER_RADIUS, 72, 52, 0, Math.PI * 2, 0.10, Math.PI - 0.24),
+    glassMaterial(), shell);
+  clearBowl.renderOrder = 3;
+  torus(shell, 1.64, 0.010, lip, -0.20);
+  torus(shell, 1.53, 0.013, lip, 0.64, 0.63, 1.40);
+  torus(shell, 1.32, 0.009, lip, 1.00, 0.55, 0.20);
 
-  const aperture = Math.asin(GATE_RADIUS / CHAMBER_RADIUS);
-  const glassShape = new THREE.SphereGeometry(CHAMBER_RADIUS, 72, 48, 0, Math.PI * 2, aperture, Math.PI - aperture);
-  const glass = place(glassShape, glassMaterial(), shell);
-  glass.quaternion.copy(gateRotation);
-  glass.renderOrder = 4;
-  const backGlass = place(glassShape, new THREE.MeshBasicMaterial({
-    color: 0xb8ddff, transparent: true, opacity: 0.07, side: THREE.BackSide, depthWrite: false,
-  }), shell);
-  backGlass.quaternion.copy(gateRotation);
-  backGlass.renderOrder = 2;
-  const reflection = new THREE.MeshBasicMaterial({
-    color: 0xdef6ff, transparent: true, opacity: 0.21, depthWrite: false, toneMapped: false,
-  });
-  const highlight = torus(shell, Math.sqrt(CHAMBER_RADIUS ** 2 - 0.92 ** 2), 0.0065, reflection, 0.92, 0.67, 1.72);
-  highlight.renderOrder = 4;
-  torus(shell, Math.sqrt(CHAMBER_RADIUS ** 2 - 1.2 ** 2), 0.0038, reflection, 1.2, 0.49, 0.23).renderOrder = 4;
+  // Paired acrylic tracks sit in front of the opal arch. Their centerline is the physical rail.
+  for (const side of [-1, 1]) {
+    const arc = (radius, thickness, material, z, sweep = TRACK_END + 0.09) => {
+      const start = side === -1 ? Math.PI/2 : Math.PI/2 - sweep;
+      return torus(shell, radius, thickness, material, z, sweep, start);
+    };
+    arc(TRACK_RADIUS + 0.045, 0.116, enamel, -0.175);
+    arc(TRACK_RADIUS + 0.056, 0.084, lamp, -0.086);
+    arc(TRACK_RADIUS, BALL_RADIUS + 0.033, acrylic, 0).renderOrder = 4;
+    arc(TRACK_RADIUS + 0.14, 0.016, chrome, 0.064);
+    arc(TRACK_RADIUS - 0.142, 0.013, lip, 0.067);
+    arc(TRACK_RADIUS + 0.126, 0.010, lip, 0.116);
+    const stop = railPosition(side === -1 ? 0 : MAIN_COUNT, TRACK_END + 0.085);
+    const stopper = place(new THREE.BoxGeometry(0.24, 0.044, 0.34), chrome, shell, stop.x, stop.y, 0);
+    stopper.rotation.z = side === -1 ? -0.42 : 0.42;
 
-  // Opposing rims and radial couplers give the chamber an open, structural frame.
-  torus(shell, 1.755, 0.085, dark, -0.42);
-  torus(shell, 1.785, 0.043, steel, -0.43);
-  torus(shell, 1.733, 0.012, dim, -0.50);
-  torus(shell, 1.764, 0.083, dark, 0.285);
-  torus(shell, 1.785, 0.057, silver, 0.35);
-  torus(shell, 1.833, 0.019, steel, 0.359);
-  torus(shell, 1.725, 0.023, ceramic, 0.409);
-  torus(shell, 1.707, 0.009, ice, 0.407);
-  torus(shell, 1.811, 0.013, bright, 0.393, Math.PI * 1.18, Math.PI * 0.02);
-  torus(shell, 1.811, 0.013, bright, 0.393, Math.PI * 0.37, Math.PI * 1.39);
-
-  const fastener = new THREE.CylinderGeometry(0.041, 0.041, 0.06, 6);
-  const tickGeometry = new THREE.BoxGeometry(0.012, 0.036, 0.008);
-  for (let index = 0; index < 48; index += 1) {
-    const angle = index / 48 * Math.PI * 2;
-    const tick = place(tickGeometry, index % 6 === 0 ? bright : dim, shell,
-      1.665 * Math.cos(angle), 1.665 * Math.sin(angle), 0.46);
-    tick.rotation.z = angle - Math.PI / 2;
-    tick.scale.y = index % 6 === 0 ? 1.4 : 0.55;
+    const saddle = new THREE.Shape();
+    saddle.moveTo(0.34, -1.80);
+    saddle.lineTo(1.26, -1.80);
+    saddle.quadraticCurveTo(1.45, -1.78, 1.51, -1.54);
+    saddle.quadraticCurveTo(1.91, -1.06, 1.96, -0.66);
+    saddle.lineTo(1.66, -0.81);
+    saddle.quadraticCurveTo(1.46, -1.27, 0.97, -1.56);
+    saddle.quadraticCurveTo(0.70, -1.71, 0.34, -1.68);
+    saddle.closePath();
+    const support = place(new THREE.ExtrudeGeometry(saddle, { depth: 0.68, bevelEnabled: true,
+      bevelThickness: 0.035, bevelSize: 0.035, bevelSegments: 3, steps: 1 }), enamel, shell, 0, 0, -0.35);
+    support.scale.x = side;
   }
-
-  for (const degrees of [13, 106, 178, 219, 289, 333]) {
-    const angle = degrees * Math.PI / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const rib = place(new THREE.BoxGeometry(0.12, 0.19, 0.92), dark, shell, 1.812 * cos, 1.812 * sin, -0.05);
-    rib.rotation.z = angle;
-    const cap = place(new THREE.BoxGeometry(0.125, 0.142, 0.11), silver, shell, 1.827 * cos, 1.827 * sin, 0.435);
-    cap.rotation.z = angle;
-    const bolt = place(fastener, steel, shell, cap.position.x, cap.position.y, 0.491);
-    bolt.rotation.x = Math.PI / 2;
-    place(new THREE.BoxGeometry(0.031, 0.008, 0.008), dark, shell,
-      cap.position.x, cap.position.y, 0.522).rotation.z = angle;
-  }
-
-  const clear = new THREE.MeshPhysicalMaterial({
-    color: 0xb2dbff, roughness: 0.24, metalness: 0.10,
-    transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide,
-  });
-  const neck = axisCylinder(shell, GATE_RADIUS + 0.011, GATE_RADIUS + 0.011, 0.4, clear, 1.98, true);
-  neck.renderOrder = 3;
-  axisCylinder(shell, 0.37, 0.39, 0.12, dark, 1.77, true);
-  axisCylinder(shell, 0.353, 0.354, 0.062, silver, 1.856, true);
-  axisCylinder(shell, 0.319, 0.319, 0.045, steel, 1.914, true);
-  axisCylinder(shell, 0.316, 0.316, 0.07, silver, 2.095, true);
-
-  const gateLamp = new THREE.MeshBasicMaterial({ color: 0x3c819e, toneMapped: false });
-  const outletLamp = axisCylinder(shell, 0.32, 0.32, 0.022, gateLamp, 2.13, true);
-  outletLamp.renderOrder = 4;
-  const gatePivot = new THREE.Group();
-  gatePivot.position.copy(gateAxis).multiplyScalar(2.147);
-  gatePivot.quaternion.copy(gateRotation);
-  shell.add(gatePivot);
-  const shutter = new THREE.Group();
-  shutter.position.x = -GATE_RADIUS;
-  gatePivot.add(shutter);
-  cylinder(shutter, GATE_RADIUS * 0.96, GATE_RADIUS * 0.96, 0.035, dark, GATE_RADIUS, 0, 0);
-  cylinder(shutter, 0.118, 0.118, 0.012, steel, GATE_RADIUS, -0.022, 0);
-
-  const chute = place(new THREE.TubeGeometry(track, 72, 0.183, 16, false), clear, shell);
-  chute.renderOrder = 3;
-  for (const sign of [-1, 1]) {
-    const edge = [];
-    for (let index = 0; index <= 44; index += 1) {
-      const point = track.getPoint(index / 44);
-      const tangent = track.getTangent(index / 44);
-      const normal = new THREE.Vector3(-tangent.y, tangent.x, 0).normalize();
-      edge.push(point.addScaledVector(normal, sign * 0.176));
+  // Five clear loading channels and their open mouths are visible behind the bowl.
+  for (let i = -2; i <= 2; i++) {
+    const x = i * 0.305;
+    const from = { x, y: 0.01, z: -0.43 };
+    const to = { x, y: 1.93 - 0.032 * i * i, z: -0.65 };
+    tubeBetween(shell, from, to, 0.147, acrylic, true);
+    for (const end of [from, to]) {
+      const rim = torus(shell, 0.149, 0.009, lip);
+      rim.position.copy(end);
+      rim.rotation.x = 1.19;
     }
-    const rail = new THREE.CatmullRomCurve3(edge);
-    place(new THREE.TubeGeometry(rail, 55, 0.014, 6, false), silver, shell);
+    for (const dx of [-0.145, 0.145]) tubeBetween(shell,
+      { ...from, x:x+dx }, { ...to, x:x+dx }, 0.005, lip);
   }
-
-  for (const point of [0.18, 0.53, 0.83]) {
-    const position = track.getPointAt(point);
-    const tangent = track.getTangentAt(point);
-    const band = place(new THREE.TorusGeometry(0.186, 0.023, 8, 32), steel, shell);
-    band.position.copy(position);
-    band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
+  const top = place(new THREE.BoxGeometry(0.65, 0.20, 0.41), acrylic, shell, 0, 1.88, -0.025);
+  top.renderOrder = 2;
+  for (const x of [-0.29,0.29]) {
+    cylinder(shell, 0.046, 0.046, 0.065, chrome, x, 1.95, 0.10);
+    cylinder(shell, 0.051, 0.051, 0.045, chrome, x, 1.76, -0.12);
   }
+  tubeBetween(shell, {x:0,y:POCKET_Y,z:0}, {x:0,y:1.76,z:0}, 0.142, acrylic, true);
+  cylinder(shell, 0.34, 0.26, 0.065, chrome, 0, -1.63, 0);
+  const piston = cylinder(shell, 0.092, 0.092, 1, liftLight, 0, POCKET_Y, 0);
+  const cup = cylinder(shell, 0.142, 0.102, 0.054, chrome, 0, POCKET_Y, 0);
 
-  // The receiver and its cable channel are supported by the same floor deck.
-  cylinder(shell, 0.257, 0.33, 0.13, ceramic, tubeExit.x, -1.795, tubeExit.z);
-  cylinder(shell, 0.316, 0.37, 0.046, ice, tubeExit.x, -1.875, tubeExit.z);
-  cylinder(shell, 0.21, 0.33, 0.51, dark, tubeExit.x, -2.15, tubeExit.z);
-  cylinder(shell, 0.31, 0.39, 0.12, silver, tubeExit.x, -2.43, tubeExit.z);
-  place(new THREE.BoxGeometry(1.42, 0.12, 0.52), dark, shell, 1.58, -2.405, 0.52);
-  place(new THREE.BoxGeometry(1.14, 0.018, 0.065), dim, shell, 1.63, -2.333, 0.76);
+  const paddles = [0,1].map(i => {
+    const rotor = new THREE.Group();
+    shell.add(rotor);
+    const pts = armPoints(i, 0);
+    pts.slice(1).forEach((p,n) => tubeBetween(rotor, pts[n], p, ARM_RADIUS, chrome));
+    for (const p of pts) place(new THREE.SphereGeometry(ARM_RADIUS,12,8), chrome, rotor, p.x,p.y,p.z);
+    return rotor;
+  });
 
-  cylinder(shell, 1.05, 0.90, 0.18, ceramic, 0, -1.762, 0);
-  cylinder(shell, 1.000, 0.93, 0.065, steel, 0, -1.875, 0);
-  cylinder(shell, 0.976, 0.941, 0.035, ice, 0, -1.923, 0);
-  cylinder(shell, 0.94, 1.19, 0.42, ceramic, 0, -2.141, 0);
-  cylinder(shell, 1.23, 1.30, 0.068, steel, 0, -2.357, 0);
-  cylinder(shell, 1.296, 1.34, 0.035, dim, 0, -2.412, 0);
-  cylinder(shell, 1.34, 1.41, 0.085, dark, 0, -2.468, 0);
-
-  const plate = place(new THREE.BoxGeometry(0.82, 0.21, 0.05), dark, shell, 0, -2.13, 1.068);
-  plate.rotation.x = -0.19;
-  const indicator = new THREE.MeshBasicMaterial({ color: 0x6093ad, toneMapped: false });
-  place(new THREE.BoxGeometry(0.39, 0.025, 0.018), indicator, shell, 0, -2.125, 1.101);
-  for (const x of [-0.31, 0.31]) {
-    const pin = place(new THREE.CylinderGeometry(0.031, 0.031, 0.02, 6), steel, shell, x, -2.129, 1.106);
-    pin.rotation.x = Math.PI / 2;
-  }
+  cylinder(shell, 1.36, 1.38, 0.17, enamel, 0, -1.82, -0.04);
+  cylinder(shell, 1.55, 1.55, 0.049, chrome, 0, -1.925, -0.04);
+  cylinder(shell, 1.55, 1.53, 0.058, glow, 0, -1.975, -0.04);
+  cylinder(shell, 1.50, 1.47, 0.055, graphite, 0, -2.024, -0.04);
+  cylinder(shell, 1.37, 1.15, 1.03, enamel, 0, -2.54, -0.04);
+  cylinder(shell, 1.16, 1.18, 0.065, chrome, 0, -3.073, -0.04);
+  const name = place(new THREE.PlaneGeometry(1.28,0.23), printPanel('MARK SIX',124,'#3e4358',14), shell,
+    0, -2.51, 1.23);
+  name.rotation.x = -0.21;
   shell.traverse(mesh => {
     if (mesh.isMesh && mesh.material.isMeshStandardMaterial && !mesh.material.transparent) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
     }
   });
-  return { gateLamp, shutter, indicator };
+  return { paddles, piston, cup };
 }
 
 function makeThreeScene(host) {
@@ -382,9 +291,9 @@ function makeThreeScene(host) {
   scene.environmentIntensity = 0.82;
   environment.dispose();
   environmentGenerator.dispose();
-  scene.add(new THREE.HemisphereLight(0xe1f1ff, 0x344663, 1.05));
+  scene.add(new THREE.HemisphereLight(0xfaf7f4, 0x615a73, 0.85));
 
-  const key = new THREE.DirectionalLight(0xf3f7ff, 2.35);
+  const key = new THREE.DirectionalLight(0xfff8ec, 2.0);
   key.position.set(-3.75, 6.5, 4.5);
   key.castShadow = true;
   key.shadow.camera.left = -4.2;
@@ -396,14 +305,14 @@ function makeThreeScene(host) {
   key.shadow.normalBias = 0.028;
   key.shadow.bias = -0.00045;
   key.shadow.radius = 2;
-  const fill = new THREE.DirectionalLight(0x7eb4ff, 2.1);
+  const fill = new THREE.DirectionalLight(0xc6d8ff, 1.65);
   fill.position.set(4, 2.2, -3);
   const frontLight = new THREE.DirectionalLight(0xe1ecff, 0.78);
   frontLight.position.set(1, -0.2, 5);
   scene.add(key, fill, frontLight);
 
   makeStudio(scene);
-  const { gateLamp, shutter, indicator } = makeMachine(scene);
+  const { paddles, piston, cup } = makeMachine(scene);
   const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 24, 16);
   const ballMeshes = new Map();
   for (const number of BALL_NUMBERS) {
@@ -417,9 +326,9 @@ function makeThreeScene(host) {
   }
 
   const camera = new THREE.PerspectiveCamera(34.6, 1, 0.1, 60);
-  const center = new THREE.Vector3(0.18, -0.34, 0);
+  const center = new THREE.Vector3(0, -0.48, 0);
   const cameras = {
-    front: new THREE.Vector3(1.10, 1.45, 8.72),
+    front: new THREE.Vector3(0, 0.71, 9.05),
     side: new THREE.Vector3(5.64, 2.25, 7.03),
     overhead: new THREE.Vector3(0.55, 7.02, 6.55),
   };
@@ -432,7 +341,7 @@ function makeThreeScene(host) {
     const height = host.clientHeight;
     if (!width || !height) return;
     camera.aspect = width / height;
-    const narrowFov = 2 * Math.atan(3.02 / (cameras.front.length() * camera.aspect)) / THREE.MathUtils.DEG2RAD;
+    const narrowFov = 2 * Math.atan(2.24 / (cameras.front.length() * camera.aspect)) / THREE.MathUtils.DEG2RAD;
     camera.fov = Math.max(34.6, narrowFov);
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
@@ -463,17 +372,22 @@ function makeThreeScene(host) {
         mesh.rotation.set(ball.ax, ball.ay + ball.number, ball.az);
       }
       if (machine.release) {
-        const { ball } = machine.release;
-        const mesh = ballMeshes.get(ball.number);
+        const mesh = ballMeshes.get(machine.release.ball.number);
         mesh.visible = true;
-        mesh.position.copy(getReleasedPosition(ball, machine.travel));
-        mesh.rotation.set(ball.ax + machine.travel * 7, ball.ay, ball.az + machine.travel * 4);
+        mesh.position.copy(machine.carriedPosition);
+        mesh.rotation.z = machine.release.angle * TRACK_RADIUS / BALL_RADIUS;
       }
-
-      const open = machine.gateOpen || machine.release !== null;
-      shutter.rotation.z = THREE.MathUtils.lerp(shutter.rotation.z, open ? 1.9 : 0, 1 - Math.exp(-20 * elapsed));
-      gateLamp.color.setHex(open ? 0xbdf7ff : 0x3c819e);
-      indicator.color.setHex(machine.state === 'running' ? 0x9bedff : 0x6093ad);
+      machine.drawn.forEach((number, i) => {
+        const mesh = ballMeshes.get(number);
+        mesh.visible = true;
+        mesh.position.copy(railPosition(i));
+        mesh.rotation.set(0, 0.7, i * 0.22);
+      });
+      paddles.forEach((paddle,i) => { paddle.rotation.y = -machine.angles[i]; });
+      const shaftBottom = POCKET_Y - 0.19;
+      piston.scale.y = Math.max(0.01, machine.liftY - shaftBottom);
+      piston.position.y = shaftBottom + piston.scale.y / 2;
+      cup.position.y = machine.liftY;
       renderer.render(scene, camera);
     },
   };
@@ -507,9 +421,9 @@ function makeCanvasScene(host) {
       if (!context || !width || !height) return;
       angle += ((view === 'side' ? 0.6 : 0) - angle) * 0.09;
       elevation += ((view === 'overhead' ? 0.78 : 0) - elevation) * 0.09;
-      const scale = Math.min(width / 5.7, height / 5);
-      const x = width / 2 - 0.2 * scale;
-      const y = height / 2 - 0.23 * scale;
+      const scale = Math.min(width / 4.7, height / 5.5);
+      const x = width / 2;
+      const y = height / 2 - 0.4 * scale;
       const radius = CHAMBER_RADIUS * scale;
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
@@ -547,34 +461,39 @@ function makeCanvasScene(host) {
       base.addColorStop(1, '#586c85');
       context.fillStyle = base;
       context.fill();
-      context.fillStyle = '#1b2028';
+      context.fillStyle = '#ff482d';
       context.fillRect(-1.2, 2.38, 2.4, 0.1);
 
       const project = ({ x: px, y: py, z: pz }) => [
         px * cosine - pz * sine, -py * Math.cos(elevation) + pz * Math.sin(elevation),
       ];
-      const route = track.getPoints(35);
-      context.beginPath();
-      route.forEach((point, index) => {
-        const [px, py] = project(point);
-        if (index === 0) context.moveTo(px, py);
-        else context.lineTo(px, py);
-      });
-      context.lineWidth = 0.33;
-      context.strokeStyle = '#92cafa46';
-      context.stroke();
-      context.lineWidth = 0.014;
-      context.strokeStyle = machine.gateOpen ? '#defffd' : '#89afd0';
-      context.stroke();
-
-      const balls = [...machine.balls].sort((left, right) =>
-        ((left.z - right.z) * cosine + (left.x - right.x) * sine),
-      );
-      if (machine.release) {
-        const { ball } = machine.release;
-        const position = getReleasedPosition(ball, machine.travel);
-        balls.push({ number: ball.number, x: position.x, y: position.y, z: position.z });
+      function line(points, color, thickness) {
+        context.beginPath();
+        points.forEach((p, i) => {
+          const [px, py] = project(p);
+          if (i === 0) context.moveTo(px,py);
+          else context.lineTo(px,py);
+        });
+        context.lineWidth = thickness;
+        context.strokeStyle = color;
+        context.stroke();
       }
+      for (const i of [0, MAIN_COUNT]) {
+        const rail = Array.from({length:51}, (_,n) => railPosition(i, (TRACK_END+0.08)*n/50));
+        line(rail, '#e3e5ef', 0.22);
+        line(rail, '#a9bfd0', 0.035);
+      }
+      for (let i=-2; i<=2; i++) {
+        for (const side of [-1,1]) {
+          const x = i*0.305 + side*0.143;
+          line([{x,y:0.01,z:-0.43},{x,y:1.90,z:-0.65}], '#c7cddd', 0.011);
+        }
+      }
+      for (const [i,angle] of machine.angles.entries()) line(armPoints(i,angle), '#8a8c9b', 2*ARM_RADIUS);
+      line([{x:0,y:POCKET_Y,z:0}, {x:0,y:machine.liftY,z:0}], '#ebfcff', 0.18);
+      const balls = [...machine.balls, ...machine.drawn.map((number,i) => ({number, ...railPosition(i)}))];
+      if (machine.release) balls.push({number:machine.release.ball.number, ...machine.carriedPosition});
+      balls.sort((a,b) => (a.z-b.z)*cosine + (a.x-b.x)*sine);
       context.font = '800 0.115px Arial, sans-serif';
       context.textAlign = 'center';
       context.textBaseline = 'middle';

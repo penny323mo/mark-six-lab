@@ -30,7 +30,14 @@ const htmlPlugin = {
       const html = source
         .replace('</head>', `  <link rel="stylesheet" href="${assetUrl(bundle.cssBundle)}">\n</head>`)
         .replace('src="/src/app.js"', `src="${assetUrl(script)}"`);
-      await writeFile(new URL('index.html', output), html);
+      const licenses = await Promise.all([
+        readFile(new URL('../node_modules/three/LICENSE', import.meta.url), 'utf8'),
+        readFile(new URL('../node_modules/@fontsource-variable/space-grotesk/LICENSE', import.meta.url), 'utf8'),
+      ]);
+      await Promise.all([
+        writeFile(new URL('index.html', output), html),
+        writeFile(new URL('licenses.txt', output), 'Three.js\n' + licenses[0] + '\nSpace Grotesk\n' + licenses[1]),
+      ]);
     });
   },
 };

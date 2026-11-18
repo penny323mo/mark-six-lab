@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  BALL_RADIUS, CHAMBER_RADIUS, DrawMachine, GATE_AXIS, GATE_EXIT, TIME_STEP,
+  BALL_RADIUS, CHAMBER_RADIUS, DrawMachine, POCKET_RADIUS, POCKET_Y, TRACK_RADIUS, TIME_STEP, railPosition,
   collideBalls, constrainToChamber,
 } from '../src/physics.js';
 import { BALL_NUMBERS, autoPick, matchEntry, validNumbers } from '../src/rules.js';
@@ -32,24 +32,57 @@ test('conserves momentum along an equal-mass contact with restitution', () => {
   const right = { x: BALL_RADIUS * 1.99, y: 0, z: 0, vx: -1, vy: -0.1, vz: 0 };
   collideBalls(left, right);
   assert.ok(Math.abs(left.vx + right.vx) < 1e-9);
-  assert.ok(Math.abs(right.vx - left.vx - 1.46) < 1e-9);
+  assert.ok(Math.abs(right.vx - left.vx - 1.26) < 1e-9);
   assert.equal(left.vy, 0.2);
   assert.equal(right.vy, -0.1);
 });
 
-test('rejects exits through the shell and permits outward transit at the open outlet', () => {
-  const makeProbe = (distance, direction = 1) => {
-    const [x, y, z] = GATE_AXIS.map(component => distance * component * direction);
-    const [vx, vy, vz] = GATE_AXIS.map(component => 2 * component * direction);
-    return { x, y, z, vx, vy, vz, inCollar: false };
-  };
-  const wallLimit = CHAMBER_RADIUS - BALL_RADIUS;
-  const closed = makeProbe(GATE_EXIT + 0.01);
+test('only a downward crossing inside the open bottom pocket can release a ball', () => {
+  const probe = (x, y, vy) => ({ x, y, z: 0, vx: 0, vy, vz: 0, inPocket: false });
+  const closed = probe(0, POCKET_Y - 0.02, -1);
   assert.equal(constrainToChamber(closed, false), false);
-  assert.ok(Math.abs(Math.hypot(closed.x, closed.y, closed.z) - wallLimit) < 1e-9);
-  assert.equal(constrainToChamber(makeProbe(GATE_EXIT - 0.01), true), false);
-  assert.equal(constrainToChamber(makeProbe(GATE_EXIT + 0.01, -1), true), false);
-  assert.equal(constrainToChamber(makeProbe(GATE_EXIT + 0.01), true), true);
+  assert.ok(closed.y > POCKET_Y);
+  assert.equal(constrainToChamber(probe(0, POCKET_Y + 0.02, -1), true), false);
+  assert.equal(constrainToChamber(probe(0, POCKET_Y - 0.01, 1), true), false);
+  assert.equal(constrainToChamber(probe(POCKET_RADIUS, POCKET_Y - 0.01, -1), true), false);
+  assert.equal(constrainToChamber(probe(0, POCKET_Y - 0.01, -1), true), true);
+  const side = probe(CHAMBER_RADIUS + 0.20, 0, -1);
+  assert.equal(constrainToChamber(side, true), false);
+  assert.ok(Math.abs(side.x - (CHAMBER_RADIUS-BALL_RADIUS)) < 1e-7);
+});
+
+test('piston rises to the crown and both rails hold their balls at distinct positions', () => {
+  const m = new DrawMachine(BALL_NUMBERS, 0.62);
+  m.start();
+  let count = 0;
+  let lastHeight = POCKET_Y - 0.05;
+  let lastPhase = '';
+  for (let tick = 0; m.state === 'running' && tick < 60/TIME_STEP; tick++) {
+    m.advance();
+    if (!m.release) {
+      lastHeight = POCKET_Y - 0.05;
+      lastPhase = '';
+      continue;
+    }
+    const p = m.carriedPosition;
+    if (m.release.phase === 'lift') {
+      assert.ok(p.y >= lastHeight - 1e-6);
+      lastHeight = p.y;
+    } else {
+      if (lastPhase === 'lift') {
+        assert.ok(Math.abs(lastHeight - TRACK_RADIUS) < 0.01);
+        count++;
+      }
+      assert.ok(Math.abs(Math.hypot(p.x, p.y) - TRACK_RADIUS) < 1e-8);
+      assert.ok(m.drawn.length === 6 ? p.x >= 0 : p.x <= 0);
+    }
+    lastPhase = m.release.phase;
+  }
+  assert.equal(count, 7);
+  for (let i=1; i<6; i++) {
+    const a=railPosition(i-1), b=railPosition(i);
+    assert.ok(Math.hypot(a.x-b.x, a.y-b.y) >= 2*BALL_RADIUS);
+  }
 });
 
 function simulate(phase, labels = BALL_NUMBERS, idleSteps = 150) {
@@ -70,7 +103,7 @@ function simulate(phase, labels = BALL_NUMBERS, idleSteps = 150) {
   return machine.drawn;
 }
 
-test('draws seven distinct balls through the same outlet over varied airflow and rest times', () => {
+test('draws seven distinct balls through the same outlet over varied motor phases and rest times', () => {
   for (let phase = 0; phase < 32; phase += 1) {
     simulate(phase * Math.PI / 16, BALL_NUMBERS, phase * 19);
   }

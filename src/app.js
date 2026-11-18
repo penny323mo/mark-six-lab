@@ -132,15 +132,15 @@ function renderHistory() {
 const displayStates = {
   idle: ['待機', '撳「開始攪珠」逐粒開獎。'],
   running: ['攪珠中', '攪珠進行中，號碼按出珠次序顯示。'],
-  release: ['出珠中', '出珠中，準備揭曉下一個號碼。'],
+  lift: ['中央升球', '升降桿將底部集球口嘅號碼球送上機頂。'],
+  rail: ['號碼球入軌', '號碼球沿弧形軌道滾入展示位置。'],
   fast: ['快抽中', '快抽中，稍後顯示全部 7 個號碼。'],
   complete: ['開獎完成', '開獎完成。頭 6 粒係攪出號碼，第 7 粒係特別號碼。'],
-  stalled: ['出珠逾時', '出珠逾時，可以重新攪珠。'],
 };
 
 function renderState() {
   const running = machine.state === 'running';
-  const mode = running && fast ? 'fast' : running && machine.release ? 'release' : machine.state;
+  const mode = running && fast ? 'fast' : running && machine.release ? machine.release.phase : machine.state;
   if (mode === stateShown) return;
   stateShown = mode;
 

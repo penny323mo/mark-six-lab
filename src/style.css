@@ -165,7 +165,7 @@ nav { display: flex; align-items: center; gap: 11px; }
   overflow: hidden;
   height: clamp(485px, 60svh, 650px);
   background:
-    radial-gradient(ellipse at 47% 37%, #486e94 0, #2a4465 40%, #16243e 83%);
+    radial-gradient(ellipse at 47% 37%, #c8c3c5 0, #a4a6c5 52%, #62627d 100%);
 }
 
 .machine-stage::after {
@@ -221,9 +221,9 @@ nav { display: flex; align-items: center; gap: 11px; }
 }
 
 .machine-state[data-state='running'] i,
-.machine-state[data-state='release'] i { background: #b3e9ff; box-shadow: 0 0 10px #b3e9ff9f; }
+.machine-state[data-state='lift'] i,
+.machine-state[data-state='rail'] i { background: #b3e9ff; box-shadow: 0 0 10px #b3e9ff9f; }
 .machine-state[data-state='complete'] i { background: #58cf9f; box-shadow: 0 0 10px #58cf9f78; }
-.machine-state[data-state='stalled'] i { background: #f07875; }
 
 .counter {
   display: flex;
