@@ -26,6 +26,12 @@ export function formatNumber(number) {
   return String(number).padStart(2, '0');
 }
 
+export function resultOrder(draw) {
+  if (draw.length !== DRAW_COUNT) return draw;
+  const main = draw.slice(0, MAIN_COUNT).sort((left, right) => left - right);
+  return [...main, draw[MAIN_COUNT]];
+}
+
 export function validNumbers(numbers, count) {
   return Array.isArray(numbers)
     && numbers.length === count

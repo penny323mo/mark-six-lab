@@ -1,9 +1,11 @@
 import './style.css';
 import { DrawMachine, TIME_STEP } from './physics.js';
 import { createMachineScene } from './scene.js';
+import { MachineSound } from './sound.js';
+import { drawTheme } from './theme.js';
 import {
   BALL_COUNT, BALL_NUMBERS, DRAW_COUNT, MAIN_COUNT, PRIZE_DIVISIONS,
-  autoPick, ballColor, formatNumber, matchEntry, validNumbers,
+  autoPick, ballColor, formatNumber, matchEntry, resultOrder, validNumbers,
 } from './rules.js';
 
 const element = id => document.getElementById(id);
@@ -11,7 +13,9 @@ const storageKey = 'mark-six-lab:v1';
 const historyLimit = 8;
 const clockFormat = new Intl.DateTimeFormat('zh-HK', { hour: '2-digit', minute: '2-digit', hour12: false });
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const view = createMachineScene(element('machine-view'));
+const viewHost = element('machine-view');
+const view = createMachineScene(viewHost);
+const studioDialog = element('studio-dialog');
 const pickDialog = element('pick-dialog');
 const rulesDialog = element('rules-dialog');
 const resultBalls = element('result-balls');
@@ -29,29 +33,28 @@ function loadSettings() {
 }
 
 const settings = loadSettings();
+const theme = drawTheme(element('theme-player'), element('music-follow'));
+element('music-follow').checked = settings.followMusic !== false;
 let selection = validNumbers(settings.selection, MAIN_COUNT) ? settings.selection : [];
 let history = Array.isArray(settings.history)
   ? settings.history.filter(row => row && Number.isFinite(row.time)
     && Math.abs(row.time) <= 8.64e15 && validNumbers(row.numbers, DRAW_COUNT)).slice(0, historyLimit)
   : [];
 let draft = [];
-let audio = null;
-let soundEnabled = false;
+let effects;
+let soundEnabled = settings.soundEnabled !== false;
 
 function persist() {
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify({ selection, history }));
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      selection, history, soundEnabled, followMusic: element('music-follow').checked,
+    }));
   } catch {
     // Storage may be unavailable. The current session keeps its results in memory.
   }
 }
 
-function newMachine() {
-  const entropy = crypto.getRandomValues(new Uint32Array(1))[0];
-  return new DrawMachine(undefined, entropy / 0x100000000 * Math.PI * 2);
-}
-
-let machine = newMachine();
+let machine = new DrawMachine();
 let fast = false;
 let accumulator = 0;
 let lastFrame = performance.now();
@@ -75,7 +78,8 @@ function styleBall(ball, number, { extra = false, placeholder = '·' } = {}) {
 }
 
 function renderResults() {
-  const balls = Array.from({ length: DRAW_COUNT }, (_, index) => numberBall(machine.drawn[index], {
+  const numbers = resultOrder(machine.drawn);
+  const balls = Array.from({ length: DRAW_COUNT }, (_, index) => numberBall(numbers[index], {
     extra: index === MAIN_COUNT,
     placeholder: index === MAIN_COUNT ? '特' : String(index + 1),
   }));
@@ -122,7 +126,9 @@ function renderHistory() {
     time.textContent = clockFormat.format(record.time);
     const balls = document.createElement('div');
     balls.className = 'history-balls';
-    record.numbers.forEach((number, index) => balls.append(numberBall(number, { extra: index === MAIN_COUNT })));
+    resultOrder(record.numbers).forEach((number, index) => {
+      balls.append(numberBall(number, { extra: index === MAIN_COUNT }));
+    });
     row.append(time, balls);
     return row;
   });
@@ -130,19 +136,26 @@ function renderHistory() {
 }
 
 const displayStates = {
-  idle: ['待機', '撳「開始攪珠」逐粒開獎。'],
+  idle: ['已上珠', '49 粒號碼球已放入機頂珠架。'],
+  loading: ['開閘落珠', '號碼球由機頂珠架跌入球腔。'],
   running: ['攪珠中', '攪珠進行中，號碼按出珠次序顯示。'],
   lift: ['中央升球', '升降桿將底部集球口嘅號碼球送上機頂。'],
   rail: ['號碼球入軌', '號碼球沿弧形軌道滾入展示位置。'],
   fast: ['快抽中', '快抽中，稍後顯示全部 7 個號碼。'],
-  complete: ['開獎完成', '開獎完成。頭 6 粒係攪出號碼，第 7 粒係特別號碼。'],
+  complete: ['開獎完成', '六個攪出號碼已由細排到大。'],
 };
 
 function renderState() {
   const running = machine.state === 'running';
-  const mode = running && fast ? 'fast' : running && machine.release ? machine.release.phase : machine.state;
-  if (mode === stateShown) return;
-  stateShown = mode;
+  let mode = machine.state;
+  if (running) {
+    if (machine.inFeed > 0) mode = 'loading';
+    else if (fast) mode = 'fast';
+    else if (machine.release) mode = machine.release.phase;
+  }
+  const controlsState = fast ? mode + '-fast' : mode;
+  if (controlsState === stateShown) return;
+  stateShown = controlsState;
 
   const state = element('machine-state');
   state.dataset.state = mode === 'fast' ? 'running' : mode;
@@ -155,34 +168,19 @@ function renderState() {
   quickButton.disabled = running && fast;
 }
 
-function playSound(complete) {
-  if (!audio || !soundEnabled || audio.state !== 'running') return;
-  const start = audio.currentTime;
-  const frequencies = complete ? [523.25, 659.25, 783.99] : [493.88];
-  frequencies.forEach((frequency, index) => {
-    const oscillator = audio.createOscillator();
-    const gain = audio.createGain();
-    const when = start + index * 0.075;
-    oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(0.0001, when);
-    gain.gain.exponentialRampToValueAtTime(0.13, when + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.23);
-    oscillator.connect(gain).connect(audio.destination);
-    oscillator.start(when);
-    oscillator.stop(when + 0.24);
-  });
-}
-
 function closeRound() {
+  theme.end();
   history = [{ time: Date.now(), numbers: [...machine.drawn] }, ...history].slice(0, historyLimit);
   persist();
   renderHistory();
-  const main = machine.drawn.slice(0, MAIN_COUNT).map(formatNumber).join('、');
+  const main = resultOrder(machine.drawn).slice(0, MAIN_COUNT).map(formatNumber).join('、');
   element('announcement').textContent = `開獎完成。攪出號碼 ${main}。特別號碼 ${formatNumber(machine.drawn[MAIN_COUNT])}。`;
 }
 
 function resetMachine() {
-  machine = newMachine();
+  theme.end();
+  machine = new DrawMachine();
+  if (soundEnabled && effects) effects.update(machine, 0, false);
   accumulator = 0;
   fast = false;
   drawUntil = performance.now() + 3000;
@@ -193,30 +191,34 @@ function resetMachine() {
 }
 
 function startDraw(accelerate) {
+  if (soundEnabled) enableEffects();
   if (machine.state === 'running') {
     if (accelerate) fast = true;
   } else {
     if (machine.state !== 'idle') resetMachine();
     fast = accelerate || reducedMotion.matches;
     machine.start();
+    theme.begin();
   }
   renderState();
 }
 
 function frame(now) {
   const active = machine.state === 'running';
-  const speed = active && fast ? 22 : 1;
+  const showDrop = machine.inFeed > 0 && !reducedMotion.matches;
+  const speed = active && fast && !showDrop ? 22 : 1;
   accumulator = Math.min(1.5, accumulator + Math.min(0.25, (now - lastFrame) / 1000) * speed);
   lastFrame = now;
   const cutoff = performance.now() + 10;
   let changed = false;
   let released;
+  let peak = 0;
   while (accumulator >= TIME_STEP) {
     released = machine.advance();
+    peak = Math.max(peak, machine.impact);
     accumulator -= TIME_STEP;
     if (released !== undefined) {
       changed = true;
-      if (!fast) playSound(machine.state === 'complete');
     }
     if (active && machine.state !== 'running') {
       drawUntil = now + 3000;
@@ -225,6 +227,7 @@ function frame(now) {
     }
     if (speed > 1 && performance.now() > cutoff) break;
   }
+  if (active && soundEnabled && effects?.context.state === 'running') effects.update(machine, peak, speed > 1);
 
   if (active) {
     const remaining = String(machine.balls.length);
@@ -233,7 +236,6 @@ function frame(now) {
       renderResults();
       if (machine.state === 'complete') {
         closeRound();
-        if (fast) playSound(true);
       } else if (!fast) {
         element('announcement').textContent = `第 ${machine.drawn.length} 粒，${formatNumber(machine.drawn.at(-1))} 號。`;
       }
@@ -241,7 +243,7 @@ function frame(now) {
     renderState();
   }
 
-  if (active || now < drawUntil || now - lastRender > 180) {
+  if (active || studioDialog.matches(':modal') || now < drawUntil || now - lastRender > 180) {
     view.render(machine);
     lastRender = now;
   }
@@ -306,31 +308,84 @@ element('open-rules').addEventListener('click', () => rulesDialog.showModal());
 
 const soundButton = element('sound');
 const Audio = window.AudioContext ?? window.webkitAudioContext;
-if (!Audio) soundButton.hidden = true;
-else soundButton.addEventListener('click', async () => {
-  if (soundEnabled) {
-    soundEnabled = false;
-  } else {
-    try {
-      audio ??= new Audio();
-      await audio.resume();
-      soundEnabled = true;
-    } catch {
-      soundEnabled = false;
-    }
-  }
+function soundLabel() {
   soundButton.setAttribute('aria-pressed', String(soundEnabled));
   element('sound-label').textContent = soundEnabled ? '音效開' : '音效關';
+}
+function enableEffects() {
+  if (!Audio) return;
+  try {
+    effects ??= new MachineSound(new Audio());
+    if (effects.context.state !== 'running') effects.context.resume().catch(() => {});
+  } catch {
+    soundEnabled = false;
+    soundLabel();
+  }
+}
+soundLabel();
+if (!Audio) soundButton.hidden = true;
+soundButton.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  if (soundEnabled) enableEffects();
+  else effects?.context.suspend().catch(() => {});
+  soundLabel();
+  persist();
+});
+element('music-follow').addEventListener('change', persist);
+document.addEventListener('visibilitychange', () => {
+  if (!effects || !soundEnabled) return;
+  if (document.hidden) effects.context.suspend().catch(() => {});
+  else effects.context.resume().catch(() => {});
 });
 
 const viewButtons = [...document.querySelectorAll('[data-view]')];
+let lastPreset = 'front';
 for (const button of viewButtons) {
   button.addEventListener('click', () => {
-    view.setView(button.dataset.view);
+    lastPreset = button.dataset.view;
+    view.setView(lastPreset);
     drawUntil = performance.now() + 650;
     for (const choice of viewButtons) choice.setAttribute('aria-pressed', String(choice === button));
   });
 }
+
+const exploreButton = element('explore');
+viewHost.addEventListener('studio-navigate', () => {
+  for (const button of viewButtons) button.setAttribute('aria-pressed', 'false');
+});
+
+function enterStudio() {
+  if (studioDialog.matches(':modal')) return;
+  studioDialog.close();
+  studioDialog.removeAttribute('role');
+  studioDialog.setAttribute('aria-describedby', 'explore-help');
+  studioDialog.showModal();
+  view.setExplore(true);
+  exploreButton.textContent = '離開現場';
+  exploreButton.setAttribute('aria-expanded', 'true');
+  element('explore-help').hidden = false;
+  exploreButton.focus({ preventScroll: true });
+}
+viewHost.addEventListener('click', enterStudio);
+exploreButton.addEventListener('click', () => studioDialog.matches(':modal') ? leaveStudio() : enterStudio());
+function leaveStudio() {
+  studioDialog.close();
+  studioDialog.setAttribute('role', 'region');
+  studioDialog.removeAttribute('aria-describedby');
+  studioDialog.show();
+  view.setExplore(false);
+  view.setView(lastPreset);
+  for (const button of viewButtons) button.setAttribute('aria-pressed', String(button.dataset.view === lastPreset));
+  exploreButton.textContent = '入現場';
+  exploreButton.setAttribute('aria-expanded', 'false');
+  element('explore-help').hidden = true;
+  drawUntil = performance.now() + 750;
+  exploreButton.focus({ preventScroll: true });
+}
+studioDialog.addEventListener('cancel', event => {
+  event.preventDefault();
+  leaveStudio();
+});
 
 drawButton.addEventListener('click', () => startDraw(false));
 quickButton.addEventListener('click', () => startDraw(true));

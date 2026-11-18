@@ -12,13 +12,9 @@
     <div class="masthead-inner">
       <a class="brand" href="./" aria-label="Mark Six Lab 主頁">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>MARK SIX<span class="brand-lab"> LAB</span></span>
+        <span lang="en"><span class="brand-title">MARK SIX</span><span class="brand-lab"> LAB</span></span>
       </a>
       <nav aria-label="工具">
-        <button class="utility" id="sound" type="button" aria-pressed="false">
-          <span class="sound-icon" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span id="sound-label">音效關</span>
-        </button>
         <button class="utility utility-rules" id="open-rules" type="button">
           <span class="info-icon" aria-hidden="true">i</span> 玩法與規則
         </button>
@@ -33,13 +29,19 @@
     </section>
 
     <div class="workbench">
-      <section class="machine-panel" aria-label="攪珠機">
+      <dialog id="studio-dialog" open role="region" aria-label="攪珠現場">
+      <section class="machine-panel" id="studio-panel" aria-label="攪珠機">
         <div class="machine-stage" id="stage">
           <div class="machine-view" id="machine-view" aria-hidden="true"></div>
           <div class="stage-top">
-            <span class="machine-state" id="machine-state" data-state="idle"><i aria-hidden="true"></i><span>待機</span></span>
-            <div class="counter" aria-label="腔內球數"><strong id="remaining">49</strong><span>粒</span></div>
+            <span class="machine-state" id="machine-state" data-state="idle"><i aria-hidden="true"></i><span>已上珠</span></span>
+            <div class="stage-tools">
+              <div class="counter" aria-label="未攪出球數"><strong id="remaining">49</strong><span>粒</span></div>
+              <button type="button" id="sound" class="stage-sound" aria-pressed="true" aria-label="機械聲效"><span id="sound-label">音效開</span></button>
+              <button type="button" id="explore" aria-haspopup="dialog" aria-controls="studio-dialog" aria-expanded="false">入現場</button>
+            </div>
           </div>
+          <p class="explore-help" id="explore-help" hidden><span class="pointer-help">拖曳轉動 · 滾輪縮放 · WASD 移動</span><span class="touch-help">單指轉動 · 雙指平移或縮放</span></p>
           <div class="stage-bottom">
             <div class="current-ball" id="current-ball" hidden>
               <span class="ball" id="current-number"></span>
@@ -49,6 +51,7 @@
               <button type="button" data-view="front" aria-pressed="true">正面</button>
               <button type="button" data-view="side" aria-pressed="false">斜角</button>
               <button type="button" data-view="overhead" aria-pressed="false">俯視</button>
+              <button type="button" data-view="close" aria-pressed="false">號碼特寫</button>
             </div>
           </div>
         </div>
@@ -64,7 +67,7 @@
                 <h2 id="results-title">開獎結果</h2>
                 <span class="progress" id="result-count">0 / 7</span>
               </div>
-              <p class="result-note" id="result-note">撳「開始攪珠」逐粒開獎。</p>
+              <p class="result-note" id="result-note">49 粒號碼球已放入機頂珠架。</p>
             </div>
             <div class="result-strip">
               <div class="result-labels" aria-hidden="true">
@@ -76,7 +79,21 @@
             <p class="visually-hidden" id="announcement" role="status" aria-atomic="true"></p>
           </section>
         </div>
+        <section class="audio-deck" aria-label="經典攪珠配樂">
+          <div class="music-credit">
+            <h2>經典攪珠配樂</h2>
+            <p>《Inkpot》<span lang="en">Shocking Blue</span> · 1972 原唱版</p>
+          </div>
+          <div class="music-options">
+            <label><input id="music-follow" type="checkbox" checked> 跟攪珠播放</label>
+            <a href="https://music.apple.com/hk/album/inkpot/298129966?i=298130088" target="_blank" rel="noopener noreferrer">Apple Music ↗</a>
+          </div>
+          <div id="theme-player" class="theme-player">
+            <div id="theme-mount"></div>
+          </div>
+        </section>
       </section>
+      </dialog>
 
       <aside class="draw-sidebar" aria-label="選號同最近紀錄">
         <section class="panel selection" aria-labelledby="selection-title">
@@ -135,6 +152,9 @@
         <thead><tr><th scope="col">獎級</th><th scope="col">命中攪出號碼</th><th scope="col">命中特別號碼</th></tr></thead>
         <tbody id="prizes"></tbody>
       </table>
+      <h3>攪珠機點運作？</h3>
+      <p>五列號碼球由機頂落入透明球腔，兩支反向機臂撥動啲波。球碰撞、滾動，跌入中央集球口先會升上機頂。頭六粒入左軌，特別號碼入右軌。</p>
+      <p>重力、碰撞同摩擦以固定步長模擬。機臂轉速、回彈同升降時間係估算值。<a href="https://www.smartplay.com/lottery-products/lottery-draw-machines/halogen" target="_blank" rel="noopener noreferrer">廠方機械規格 ↗</a> · <a href="https://www.hk01.com/社會新聞/60346876/" target="_blank" rel="noopener noreferrer">香港首播畫面 ↗</a></p>
       <div class="modal-actions rules-actions">
         <a href="https://www.hkjc.com/chinese/betting/betting_rule.htm" target="_blank" rel="noopener noreferrer">查閱馬會獎券規例 <span aria-hidden="true">↗</span></a>
         <button class="button secondary" type="submit" value="close">關閉</button>
