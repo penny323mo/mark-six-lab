@@ -180,7 +180,7 @@ function closeRound() {
 
 function resetMachine() {
   machine = new DrawMachine();
-  if (soundEnabled && effects) effects.update(machine, 0, false);
+  effects?.silence(machine);
   accumulator = 0;
   fast = false;
   drawUntil = performance.now() + 3000;
@@ -326,6 +326,7 @@ soundLabel();
 if (!Audio) soundButton.hidden = true;
 soundButton.addEventListener('click', () => {
   soundEnabled = !soundEnabled;
+  effects?.silence(machine);
   if (soundEnabled) enableEffects();
   else effects?.context.suspend().catch(() => {});
   soundLabel();
@@ -336,6 +337,7 @@ document.addEventListener('visibilitychange', () => {
   lastFrame = performance.now();
   accumulator = 0;
   if (!effects || !soundEnabled) return;
+  effects.silence(machine);
   if (document.hidden) effects.context.suspend().catch(() => {});
   else effects.context.resume().catch(() => {});
 });
