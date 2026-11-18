@@ -6,17 +6,33 @@ export function drawTheme(container, follow) {
   let ready = false;
   let round = false;
   let following = false;
+  let pendingStart = false;
+  let playing = false;
+  let played = false;
+  let rewind = false;
 
   function start() {
-    if (!ready || !round || !follow.checked || document.hidden) return;
+    if (!ready || !round || !follow.checked || document.hidden || following) return;
     following = true;
-    player.seek(0);
+    if (playing) { player.seek(0); return; }
+    pendingStart = true;
+    rewind = played;
     player.resume();
   }
 
   function stop() {
-    if (following) player?.pause();
+    if (following && playing) player.pause();
     following = false;
+    rewind = false;
+  }
+
+  function playbackStarted() {
+    playing = played = true;
+    if (!pendingStart) return;
+    pendingStart = false;
+    if (!following) player.pause();
+    else if (rewind) player.seek(0);
+    rewind = false;
   }
 
   // The native player remains usable when the optional playback-control API is unavailable.
@@ -39,6 +55,11 @@ export function drawTheme(container, follow) {
     }, controller => {
       player = controller;
       container.querySelector('iframe')?.setAttribute('title', playerTitle);
+      player.addListener('playback_started', playbackStarted);
+      player.addListener('playback_update', event => {
+        if (event.data?.isPaused) playing = false;
+        else if (event.data?.position > 0) playbackStarted();
+      });
       player.addListener('ready', () => {
         ready = true;
         start();
