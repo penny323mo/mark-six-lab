@@ -51,6 +51,7 @@ export function studioCamera(canvas) {
   let exploring = false;
   let mode = 'walk';
   let framed = false;
+  let walkBlocked = false;
   let orbit;
   let lastFrame = performance.now();
   let selectedAt = -Infinity;
@@ -152,12 +153,17 @@ export function studioCamera(canvas) {
       camera.fov = firstFrame ? fov : MathUtils.lerp(camera.fov, fov, 1 - Math.exp(-9 * elapsed));
       camera.updateProjectionMatrix();
     }
+    let blocked = false;
     if (exploring && mode === 'walk' && manual) {
-      walking.update(dt, keys);
+      blocked = walking.update(dt, keys);
       const focus = MathUtils.clamp(camera.position.length(), 1.3, 13);
       camera.getWorldDirection(forward);
       target.copy(camera.position).addScaledVector(forward, focus);
       offset.copy(camera.position).sub(target);
+    }
+    if (walkBlocked !== blocked) {
+      walkBlocked = blocked;
+      canvas.toggleAttribute('data-walk-blocked', blocked);
     }
     if (!orbit) return;
     if (keys.size) {

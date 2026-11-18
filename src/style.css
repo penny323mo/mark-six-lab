@@ -731,7 +731,13 @@ body:has(#studio-dialog:modal) { overflow: hidden; }
 #studio-dialog:modal[data-console='closed'] .draw-deck { display: flex; justify-content: center; }
 #studio-dialog:modal[data-console='closed'] .draw-controls { gap: 10px; border: 0; padding: 5px 10px; }
 #studio-dialog:modal[data-console='closed'] .draw-controls .button { min-height: 36px; }
-.walk-stick { display: none; }
+.walk-stick { display: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.walk-limit {
+  display: none; position: absolute; left: 0; bottom: calc(100% + 6px); pointer-events: none;
+  border-radius: 5px; padding: 3px 7px; background: #101c2de8; color: #e2ebf3;
+  font-size: 12px; white-space: nowrap;
+}
+.machine-stage:has(canvas[data-walk-blocked]) .walk-limit { display: block; }
 @media (pointer: coarse) {
   .walk-stick:not([hidden]) {
     position: absolute; bottom: 74px; left: max(17px, env(safe-area-inset-left)); z-index: 3;

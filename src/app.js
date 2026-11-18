@@ -4,6 +4,7 @@ import { createMachineScene } from './scene.js';
 import { MachineSound } from './sound.js';
 import { backgroundTheme } from './theme.js';
 import { studioDisplay } from './studio-display.js';
+import { bindWalkStick } from './joystick.js';
 import {
   BALL_COUNT, BALL_NUMBERS, DRAW_COUNT, MAIN_COUNT, PRIZE_DIVISIONS,
   autoPick, ballColor, formatNumber, matchEntry, resultOrder, validNumbers,
@@ -342,10 +343,13 @@ document.addEventListener('visibilitychange', () => {
   else effects.context.resume().catch(() => {});
 });
 
+const stick = element('walk-stick');
+const releaseStick = bindWalkStick(stick, (x, y) => view.setStick(x, y));
 const viewButtons = [...document.querySelectorAll('[data-view]')];
 let lastPreset = 'front';
 for (const button of viewButtons) {
   button.addEventListener('click', () => {
+    releaseStick();
     lastPreset = button.dataset.view;
     view.setView(lastPreset);
     drawUntil = performance.now() + 650;
@@ -356,12 +360,10 @@ for (const button of viewButtons) {
 const exploreButton = element('explore');
 const display = studioDisplay(element('studio-panel'), () => leaveStudio());
 const navTools = element('navigation-tools');
-const stick = element('walk-stick');
 const consoleButton = element('studio-console');
 const help = element('explore-help');
 const navButtons = [...navTools.querySelectorAll('[data-navigation]')];
 let navMode = 'walk';
-let stickPointer = null;
 let leavingStudio = false;
 let helpTimer;
 
@@ -370,36 +372,6 @@ function showNavigationHelp() {
   help.classList.remove('quiet');
   helpTimer = setTimeout(() => help.classList.add('quiet'), 5500);
 }
-function releaseStick() {
-  stickPointer = null;
-  view.setStick(0, 0);
-  stick.style.setProperty('--thumb-x', '0px');
-  stick.style.setProperty('--thumb-y', '0px');
-}
-function trackStick(event) {
-  if (event.pointerId !== stickPointer) return;
-  const box = stick.getBoundingClientRect();
-  const radius = box.width * 0.33;
-  let dx = event.clientX - box.left - box.width / 2;
-  let dy = event.clientY - box.top - box.height / 2;
-  const cap = Math.min(1, radius / (Math.hypot(dx, dy) || 1));
-  dx *= cap; dy *= cap;
-  view.setStick(dx / radius, -dy / radius);
-  stick.style.setProperty('--thumb-x', dx + 'px');
-  stick.style.setProperty('--thumb-y', dy + 'px');
-}
-stick.addEventListener('pointerdown', event => {
-  if (stickPointer !== null) return;
-  stickPointer = event.pointerId;
-  stick.setPointerCapture(event.pointerId);
-  trackStick(event);
-});
-stick.addEventListener('pointermove', trackStick);
-for (const type of ['pointerup','pointercancel','lostpointercapture']) {
-  stick.addEventListener(type, event => { if (event.pointerId === stickPointer) releaseStick(); });
-}
-window.addEventListener('blur', releaseStick);
-
 function navigationMode(mode) {
   releaseStick();
   navMode = mode;
@@ -414,7 +386,6 @@ function navigationMode(mode) {
 }
 for (const button of navButtons) button.addEventListener('click', () => navigationMode(button.dataset.navigation));
 element('studio-home').addEventListener('click', () => {
-  releaseStick();
   viewButtons.find(button => button.dataset.view === 'front').click();
   showNavigationHelp();
 });

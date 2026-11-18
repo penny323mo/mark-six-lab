@@ -6,6 +6,8 @@ export function walkingCamera(camera, canvas, takeControl) {
   const velocity = new Vector3();
   const step = new Vector3();
   const pointers = new Map();
+  const doc = canvas.ownerDocument;
+  const inputWindow = doc?.defaultView ?? canvas;
   let yaw = 0, pitch = 0, aimYaw = 0, aimPitch = 0;
   let stickX = 0, stickY = 0, dolly = 0;
 
@@ -22,9 +24,15 @@ export function walkingCamera(camera, canvas, takeControl) {
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
   function down(event) {
-    if (event.button !== 0 || pointers.size >= 2) return;
-    pointers.set(event.pointerId, {x:event.clientX, y:event.clientY});
-    canvas.setPointerCapture(event.pointerId);
+    if (event.button !== 0) return;
+    if (event.isPrimary) {
+      for (const [id, point] of pointers) {
+        if (point.type === event.pointerType) pointers.delete(id);
+      }
+    }
+    if (pointers.size >= 2) return;
+    pointers.set(event.pointerId, {x:event.clientX, y:event.clientY, type:event.pointerType});
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* Continue tracking on the window. */ }
   }
   function move(event) {
     const old = pointers.get(event.pointerId);
@@ -49,8 +57,24 @@ export function walkingCamera(camera, canvas, takeControl) {
     const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
     dolly -= MathUtils.clamp(pixels * 0.009, -1.25, 1.25);
   }
-  const events = [['pointerdown',down], ['pointermove',move], ['pointerup',up],
-    ['pointercancel',up], ['lostpointercapture',up], ['wheel',wheel]];
+  function interrupt() {
+    pointers.clear();
+    stickX = stickY = dolly = 0;
+    velocity.set(0, 0, 0);
+  }
+  function touchEnd(event) {
+    if (Array.from(event.touches).some(point => point.target === canvas)) return;
+    for (const [id, point] of pointers) {
+      if (point.type === 'touch') pointers.delete(id);
+    }
+  }
+  const events = [
+    [canvas, 'pointerdown', down], [canvas, 'lostpointercapture', up], [canvas, 'wheel', wheel],
+    [inputWindow, 'pointermove', move], [inputWindow, 'pointerup', up], [inputWindow, 'pointercancel', up],
+    [inputWindow, 'touchend', touchEnd], [inputWindow, 'touchcancel', touchEnd],
+    [inputWindow, 'blur', interrupt], [inputWindow, 'pagehide', interrupt],
+  ];
+  if (doc) events.push([doc, 'visibilitychange', () => { if (doc.hidden) interrupt(); }]);
 
   function avoidFootprint(x, z, clearance) {
     const dx = camera.position.x - x, dz = camera.position.z - z;
@@ -72,13 +96,15 @@ export function walkingCamera(camera, canvas, takeControl) {
     step.set(Math.cos(yaw) * right - Math.sin(yaw) * forward, up,
       -Math.sin(yaw) * right - Math.cos(yaw) * forward).clampLength(0, 1).multiplyScalar(speed);
     velocity.lerp(step, 1 - Math.exp(-13 * dt));
+    const fromX = camera.position.x, fromZ = camera.position.z;
     camera.position.addScaledVector(velocity, dt);
     const distance = dolly * lookBlend;
     camera.position.x -= Math.sin(yaw) * distance;
     camera.position.z -= Math.cos(yaw) * distance;
     dolly -= distance;
     camera.position.y = MathUtils.clamp(camera.position.y, -2.30, 6.6);
-    const radius = Math.hypot(camera.position.x, camera.position.z);
+    const intendedX = camera.position.x, intendedZ = camera.position.z;
+    const radius = Math.hypot(intendedX, intendedZ);
     const openSide = MathUtils.smoothstep(camera.position.z / (radius || 1), 0.23, 0.60);
     const wall = MathUtils.lerp(9.15, 13.65, openSide);
     if (radius > wall) {
@@ -90,15 +116,25 @@ export function walkingCamera(camera, canvas, takeControl) {
       avoidFootprint(-8.8, 5.1, 1.1);
       avoidFootprint(8.8, 5.1, 1.1);
     }
+
+    // Keep sideways speed at an obstacle and let reversing the stick move away immediately.
+    const correctionX = camera.position.x - intendedX, correctionZ = camera.position.z - intendedZ;
+    const correctionSquared = correctionX ** 2 + correctionZ ** 2;
+    if (correctionSquared < 1e-12) return false;
+    const intoSurface = Math.min(0, velocity.x * correctionX + velocity.z * correctionZ) / correctionSquared;
+    velocity.x -= intoSurface * correctionX;
+    velocity.z -= intoSurface * correctionZ;
+    const travel = Math.hypot(camera.position.x - fromX, camera.position.z - fromZ);
+    return (stickX !== 0 || stickY !== 0) && travel < 0.25 * Math.hypot(intendedX - fromX, intendedZ - fromZ);
   }
   return {
     sync, update,
     setEnabled(enabled) {
-      for (const [type, listener] of events) {
-        if (enabled) canvas.addEventListener(type, listener, {passive:false});
-        else canvas.removeEventListener(type, listener);
+      for (const [target, type, listener] of events) {
+        if (enabled) target.addEventListener(type, listener, {capture: true, passive: type !== 'wheel'});
+        else target.removeEventListener(type, listener, true);
       }
-      pointers.clear(); stickX = stickY = 0;
+      interrupt();
       sync();
     },
     setStick(x, y) {
