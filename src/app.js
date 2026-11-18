@@ -3,6 +3,7 @@ import { DrawMachine, TIME_STEP } from './physics.js';
 import { createMachineScene } from './scene.js';
 import { MachineSound } from './sound.js';
 import { drawTheme } from './theme.js';
+import { studioDisplay } from './studio-display.js';
 import {
   BALL_COUNT, BALL_NUMBERS, DRAW_COUNT, MAIN_COUNT, PRIZE_DIVISIONS,
   autoPick, ballColor, formatNumber, matchEntry, resultOrder, validNumbers,
@@ -353,6 +354,7 @@ for (const button of viewButtons) {
 }
 
 const exploreButton = element('explore');
+const display = studioDisplay(element('studio-panel'), () => leaveStudio());
 const navTools = element('navigation-tools');
 const stick = element('walk-stick');
 const consoleButton = element('studio-console');
@@ -428,10 +430,12 @@ viewHost.addEventListener('studio-navigate', () => {
 
 function enterStudio() {
   if (studioDialog.matches(':modal')) return;
+  display.lock();
   studioDialog.close();
   studioDialog.removeAttribute('role');
   studioDialog.setAttribute('aria-describedby', 'explore-help');
   studioDialog.showModal();
+  display.enterNative();
   view.setExplore(true);
   navigationMode(navMode);
   setConsole(false);
@@ -444,6 +448,7 @@ function enterStudio() {
 viewHost.addEventListener('click', enterStudio);
 exploreButton.addEventListener('click', () => studioDialog.matches(':modal') ? leaveStudio() : enterStudio());
 function leaveStudio() {
+  if (!studioDialog.matches(':modal')) return;
   releaseStick();
   clearTimeout(helpTimer);
   navTools.hidden = true;
@@ -460,6 +465,7 @@ function leaveStudio() {
   help.hidden = true;
   drawUntil = performance.now() + 750;
   exploreButton.focus({ preventScroll: true });
+  display.unlock();
 }
 studioDialog.addEventListener('cancel', event => {
   event.preventDefault();

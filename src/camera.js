@@ -6,16 +6,32 @@ import { walkingCamera } from './walk.js';
 const directions = {
   front: new Vector3(0, 0.075, 1).normalize(),
   side: new Vector3(0.63, 0.26, 0.78).normalize(),
-  overhead: new Vector3(0.055, 0.73, 0.68).normalize(),
+  overhead: new Vector3(0.042, 0.762, 0.646).normalize(),
   close: new Vector3(0.025, 0.09, 1).normalize(),
 };
 const motionKeys = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowLeft','ArrowDown','ArrowRight','KeyQ','KeyE']);
 
-function framing(machine, view) {
+export function shotFraming(machine, view, justSelected = false) {
+  if (view === 'overhead') {
+    // The idle rack is taller than the globe. Use a wider lens below the lighting grid.
+    return machine.inFeed > 0
+      ? { target: {x:0, y:1.89, z:-0.27}, distance:6.13, fov:64, across:0.36 }
+      : { target: {x:0, y:-0.31, z:0}, distance:7.83, fov:39, across:0.32 };
+  }
   if (view === 'close') {
-    if (machine.inFeed > 0) return { target: {x:0, y:(FEED_SHELF_Y + FEED_TOP_Y) / 2, z:-0.56}, distance: 4.85 };
-    if (machine.drawn.length) return { target: railPosition(machine.drawn.length - 1), distance: 2.55 };
-    return { target: machine.carriedPosition ?? {x:0, y:-0.96, z:0}, distance: 3.45 };
+    if (machine.state === 'idle') return { target: {x:0, y:(FEED_SHELF_Y + FEED_TOP_Y) / 2, z:-0.56}, distance:4.85, across:0.23 };
+    if (machine.inFeed > 0) return { target:{x:0,y:1.16,z:-0.2}, distance:11.5 };
+    if (machine.release) {
+      const ball = machine.carriedPosition;
+      if (machine.release.phase === 'rail') {
+        return { target:{x:ball.x * 0.81,y:ball.y * 0.79,z:0}, distance:4.35, fov:38, across:0.33 };
+      }
+      return { target:{x:0,y:ball.y * 0.22 - 0.2,z:0}, distance:7.1, fov:39, across:0.34 };
+    }
+    if (machine.state === 'complete' && (justSelected || machine.time - machine.parkedAt < 1.3)) {
+      return { target:railPosition(machine.drawn.length - 1), distance:2.75 };
+    }
+    return { target:{x:0,y:-0.14,z:0}, distance:7.1, fov:38.5, across:0.34 };
   }
   return machine.inFeed > 0 ? { target: {x:0, y:1.04, z:-0.12}, distance: 12.05 }
     : { target: {x:0, y:-0.40, z:0}, distance: 8.62 };
@@ -37,6 +53,8 @@ export function studioCamera(canvas) {
   let framed = false;
   let orbit;
   let lastFrame = performance.now();
+  let selectedAt = -Infinity;
+  let lens = 34.6, across = 0.285;
   const walking = walkingCamera(camera, canvas, takeControl);
 
   function takeControl() {
@@ -109,11 +127,15 @@ export function studioCamera(canvas) {
 
   function update(machine) {
     const now = performance.now();
-    const dt = Math.min(0.15, (now - lastFrame) / 1000);
+    const elapsed = Math.min(0.65, (now - lastFrame) / 1000);
+    const dt = Math.min(0.15, elapsed);
     lastFrame = now;
+    const firstFrame = !framed;
     if (!manual) {
-      const pose = framing(machine, preset);
-      const blend = framed ? 1 - Math.exp(-7.5 * dt) : 1;
+      const pose = shotFraming(machine, preset, now - selectedAt < 1300);
+      const blend = framed ? 1 - Math.exp(-(preset === 'close' ? 5.4 : 7.5) * elapsed) : 1;
+      lens = pose.fov ?? 34.6;
+      across = pose.across ?? 0.285;
       target.lerp(pose.target, blend);
       desired.copy(directions[preset]).multiplyScalar(pose.distance);
       offset.lerp(desired, blend);
@@ -121,6 +143,14 @@ export function studioCamera(canvas) {
       camera.lookAt(target);
       orbit?.target.copy(target);
       framed = true;
+    } else if (exploring && mode === 'walk') {
+      lens = 56;
+      across = 0.32;
+    }
+    const fov = Math.max(lens, 2 * Math.atan(across / camera.aspect) * MathUtils.RAD2DEG);
+    if (Math.abs(fov - camera.fov) > 0.02) {
+      camera.fov = firstFrame ? fov : MathUtils.lerp(camera.fov, fov, 1 - Math.exp(-9 * elapsed));
+      camera.updateProjectionMatrix();
     }
     if (exploring && mode === 'walk' && manual) {
       walking.update(dt, keys);
@@ -163,12 +193,13 @@ export function studioCamera(canvas) {
     setStick: walking.setStick,
     setView(view) {
       preset = view;
+      selectedAt = performance.now();
       manual = false;
       stopMoving();
     },
     resize(width, height) {
       camera.aspect = width / height;
-      camera.fov = Math.max(34.6, 2 * Math.atan(0.245 / camera.aspect) * MathUtils.RAD2DEG);
+      camera.fov = Math.max(lens, 2 * Math.atan(across / camera.aspect) * MathUtils.RAD2DEG);
       camera.updateProjectionMatrix();
     },
   };

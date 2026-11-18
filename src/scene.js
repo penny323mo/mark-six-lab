@@ -467,6 +467,7 @@ function makeThreeScene(host) {
   let needsDraw = true;
   let previousMachine;
   let previousTime = -1;
+  let previousFov = 0;
   let lastCameraMotion = -Infinity;
   let bufferWidth = 0, bufferHeight = 0, bufferRatio = 0;
   const previousEye = new THREE.Vector3();
@@ -531,10 +532,12 @@ function makeThreeScene(host) {
         || 1 - Math.abs(previousGaze.dot(camera.quaternion)) > 1e-10;
       if (moved) lastCameraMotion = performance.now();
       adaptResolution(machine);
-      if (!needsDraw && !moved && previousMachine === machine && previousTime === machine.time) return;
+      if (!needsDraw && !moved && previousMachine === machine && previousTime === machine.time
+        && Math.abs(previousFov - camera.fov) < 0.02) return;
       needsDraw = false;
       previousMachine = machine;
       previousTime = machine.time;
+      previousFov = camera.fov;
       previousEye.copy(camera.position);
       previousGaze.copy(camera.quaternion);
       for (const mesh of ballMeshes.values()) mesh.visible = false;
@@ -598,7 +601,7 @@ function makeCanvasScene(host) {
       const frameDistance = navigation.offset.length();
       const angle = Math.atan2(navigation.offset.x, navigation.offset.z);
       const elevation = Math.asin(navigation.offset.y / frameDistance);
-      const scale = Math.min(width / 4.50, height / 5.45) * 8.62 / frameDistance;
+      const scale = height / (2 * Math.tan(THREE.MathUtils.degToRad(navigation.camera.fov) / 2) * frameDistance);
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
       const project = p => [p.x * cosine - p.z * sine,
