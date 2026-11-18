@@ -362,6 +362,7 @@ const help = element('explore-help');
 const navButtons = [...navTools.querySelectorAll('[data-navigation]')];
 let navMode = 'walk';
 let stickPointer = null;
+let leavingStudio = false;
 let helpTimer;
 
 function showNavigationHelp() {
@@ -447,8 +448,10 @@ function enterStudio() {
 }
 viewHost.addEventListener('click', enterStudio);
 exploreButton.addEventListener('click', () => studioDialog.matches(':modal') ? leaveStudio() : enterStudio());
-function leaveStudio() {
-  if (!studioDialog.matches(':modal')) return;
+async function leaveStudio() {
+  if (leavingStudio || !studioDialog.matches(':modal')) return;
+  leavingStudio = true;
+  await display.exitNative();
   releaseStick();
   clearTimeout(helpTimer);
   navTools.hidden = true;
@@ -466,6 +469,7 @@ function leaveStudio() {
   drawUntil = performance.now() + 750;
   exploreButton.focus({ preventScroll: true });
   display.unlock();
+  leavingStudio = false;
 }
 studioDialog.addEventListener('cancel', event => {
   event.preventDefault();

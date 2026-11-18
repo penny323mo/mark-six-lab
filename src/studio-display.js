@@ -2,10 +2,16 @@
 export function studioDisplay(panel, onNativeExit) {
   const root = document.documentElement;
   let saved = null;
+  let press = null;
   let native = false;
   let visit = 0;
   const fullscreenElement = () => document.fullscreenElement ?? document.webkitFullscreenElement;
   const gestureOptions = {capture:true, passive:false};
+  panel.addEventListener('pointerdown', event => {
+    if (!saved && event.target.closest('#machine-view,#explore')) {
+      press = {x:window.scrollX, y:window.scrollY, at:performance.now()};
+    }
+  }, {capture:true, passive:true});
 
   function fitViewport() {
     const viewport = window.visualViewport;
@@ -28,7 +34,8 @@ export function studioDisplay(panel, onNativeExit) {
   function lock() {
     if (saved) return;
     visit++;
-    saved = {x:window.scrollX, y:window.scrollY};
+    saved = press && performance.now() - press.at < 1200 ? press : {x:window.scrollX, y:window.scrollY};
+    press = null;
     root.style.setProperty('--page-left', -saved.x + 'px');
     root.style.setProperty('--page-top', -saved.y + 'px');
     root.classList.add('in-studio');
@@ -41,9 +48,22 @@ export function studioDisplay(panel, onNativeExit) {
     window.visualViewport?.addEventListener('scroll', fitViewport);
   }
   function exitNative() {
-    if (fullscreenElement() !== panel) return;
+    if (fullscreenElement() !== panel) return Promise.resolve();
     const exit = document.exitFullscreen ?? document.webkitExitFullscreen;
-    if (exit) Promise.resolve(exit.call(document)).catch(() => {});
+    if (!exit) return Promise.resolve();
+    return new Promise(resolve => {
+      const done = () => {
+        clearTimeout(timer);
+        document.removeEventListener('fullscreenchange', check);
+        document.removeEventListener('webkitfullscreenchange', check);
+        resolve();
+      };
+      const check = () => { if (fullscreenElement() !== panel) done(); };
+      const timer = setTimeout(done, 1200);
+      document.addEventListener('fullscreenchange', check);
+      document.addEventListener('webkitfullscreenchange', check);
+      try { Promise.resolve(exit.call(document)).then(check, done); } catch { done(); }
+    });
   }
   function enterNative() {
     const request = panel.requestFullscreen ?? panel.webkitRequestFullscreen;
@@ -72,7 +92,6 @@ export function studioDisplay(panel, onNativeExit) {
     const finished = visit;
     saved = null;
     native = false;
-    exitNative();
     window.removeEventListener('wheel', blockScroll, true);
     window.removeEventListener('touchmove', blockScroll, true);
     window.removeEventListener('keydown', blockPageKey, true);
@@ -85,5 +104,5 @@ export function studioDisplay(panel, onNativeExit) {
     returnToPage();
     requestAnimationFrame(returnToPage);
   }
-  return {lock, enterNative, unlock};
+  return {lock, enterNative, exitNative, unlock};
 }
