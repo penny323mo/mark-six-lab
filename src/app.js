@@ -2,7 +2,7 @@ import './style.css';
 import { DrawMachine, TIME_STEP } from './physics.js';
 import { createMachineScene } from './scene.js';
 import { MachineSound } from './sound.js';
-import { drawTheme } from './theme.js';
+import { backgroundTheme } from './theme.js';
 import { studioDisplay } from './studio-display.js';
 import {
   BALL_COUNT, BALL_NUMBERS, DRAW_COUNT, MAIN_COUNT, PRIZE_DIVISIONS,
@@ -15,7 +15,6 @@ const historyLimit = 8;
 const clockFormat = new Intl.DateTimeFormat('zh-HK', { hour: '2-digit', minute: '2-digit', hour12: false });
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const viewHost = element('machine-view');
-const view = createMachineScene(viewHost);
 const studioDialog = element('studio-dialog');
 const pickDialog = element('pick-dialog');
 const rulesDialog = element('rules-dialog');
@@ -34,8 +33,10 @@ function loadSettings() {
 }
 
 const settings = loadSettings();
-const theme = drawTheme(element('theme-player'), element('music-follow'));
-element('music-follow').checked = settings.followMusic !== false;
+const musicToggle = element('music-follow');
+musicToggle.checked = (settings.backgroundMusic ?? settings.followMusic) !== false;
+backgroundTheme(element('theme-player'), musicToggle, element('music-hint'));
+const view = createMachineScene(viewHost);
 let selection = validNumbers(settings.selection, MAIN_COUNT) ? settings.selection : [];
 let history = Array.isArray(settings.history)
   ? settings.history.filter(row => row && Number.isFinite(row.time)
@@ -48,7 +49,7 @@ let soundEnabled = settings.soundEnabled !== false;
 function persist() {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify({
-      selection, history, soundEnabled, followMusic: element('music-follow').checked,
+      selection, history, soundEnabled, backgroundMusic: musicToggle.checked,
     }));
   } catch {
     // Storage may be unavailable. The current session keeps its results in memory.
@@ -170,7 +171,6 @@ function renderState() {
 }
 
 function closeRound() {
-  theme.end();
   history = [{ time: Date.now(), numbers: [...machine.drawn] }, ...history].slice(0, historyLimit);
   persist();
   renderHistory();
@@ -179,7 +179,6 @@ function closeRound() {
 }
 
 function resetMachine() {
-  theme.end();
   machine = new DrawMachine();
   if (soundEnabled && effects) effects.update(machine, 0, false);
   accumulator = 0;
@@ -199,7 +198,6 @@ function startDraw(accelerate) {
     if (machine.state !== 'idle') resetMachine();
     fast = accelerate || reducedMotion.matches;
     machine.start();
-    theme.begin();
   }
   renderState();
 }
@@ -333,7 +331,7 @@ soundButton.addEventListener('click', () => {
   soundLabel();
   persist();
 });
-element('music-follow').addEventListener('change', persist);
+musicToggle.addEventListener('change', persist);
 document.addEventListener('visibilitychange', () => {
   lastFrame = performance.now();
   accumulator = 0;

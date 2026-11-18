@@ -700,6 +700,7 @@ body:has(#studio-dialog:modal) { overflow: hidden; }
 .music-credit h2 { margin: 0 0 3px; font-size: 14px; }
 .music-credit p { margin: 0; font-size: 12px; color: var(--muted); }
 .music-options { display: grid; gap: 4px; font-size: 12px; }
+#music-hint { color: var(--muted); }
 .music-options label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .music-options input { margin: 0; width: 15px; height: 15px; accent-color: var(--accent); }
 .music-options a, .rules-modal p a { color: var(--accent); }
@@ -821,7 +822,7 @@ html.in-studio body {
   #studio-dialog:modal[data-console='open'] .audio-deck {
     grid-column: 2; grid-row: 2; display: grid; grid-template-columns: 1fr; gap: 4px; padding: 4px 7px;
   }
-  #studio-dialog:modal[data-console='open'] .music-options { display: flex; justify-content: space-between; }
+  #studio-dialog:modal[data-console='open'] .music-options { display: flex; flex-wrap: wrap; justify-content: space-between; }
   #studio-dialog:modal[data-console='open'] .theme-player { width: 100%; }
   #studio-dialog:modal[data-console='open'] .explore-help { visibility: hidden; }
 }

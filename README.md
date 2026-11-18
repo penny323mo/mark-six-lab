@@ -9,7 +9,7 @@
 - 撳畫面或者「入現場」會進入全螢幕「自由行」，方向鍵、滾輪同觸控只控制現場。未支援原生全螢幕嘅瀏覽器會用鎖定嘅可視畫面。拖曳望四周，WASD 或方向鍵行走，Shift 快行，Q／E 調高度。手機左手用搖桿行走，右手拖曳轉視線。切換「環繞機身」可以用滾輪拉近游標位置，手機用雙指平移或縮放。「返機前」返回全機鏡頭，「號碼特寫」會先睇珠架，攪珠時睇全盤，每粒升球入軌先跟拍，之後返全盤。入場時控制台收起，撳「控制台」可睇返結果同配樂，Esc 或「離開現場」會返回原本網頁位置。直屏嘅鏡頭掣放喺畫面下方，手機橫屏展開控制台會移到側邊。
 - 頁首、機座同背板嘅英文名稱經桌面、手機、正面同斜角核對。[MARK SIX 字樣近照](docs/mark-six-lettering.png)
 - 「音效」控制開閘、摩打、碰撞、升球同入軌聲。碰撞聲強弱跟返物理模型嘅接觸速度。材質、燈光同機械聲效由程式重建。
-- 經典六合彩配樂嘅原曲係 Shocking Blue 於 1972 年發行嘅《Inkpot》。頁面用 Spotify 播原唱錄音。「跟攪珠播放」會喺開始時播放、完成或重置時暫停。部分瀏覽器要親手撳播放器，訪客可播嘅長度由串流平台決定。香港電視器樂編曲嘅獨立音源未獲核實。[配樂出處](https://collection.news/appledaily/articles/JJWDAB4VBNRIVZYRK7NVLPCVSA) · [Spotify 原曲](https://open.spotify.com/track/0KFnCHVyyzOQvWoJbjXi1n) · [香港 Apple Music](https://music.apple.com/hk/album/inkpot/298129966?i=298130088)
+- 經典六合彩配樂嘅原曲係 Shocking Blue 於 1972 年發行嘅《Inkpot》。頁面用 Spotify 播原唱錄音。「背景音樂循環播放」預設開啟，入頁就嘗試播放，播到尾會由頭再播。攪珠、開獎同重置期間配樂會繼續。瀏覽器要求互動時，撳一下畫面即可再試。畫面提示時直接撳 Spotify 播放器嘅 ▶ 開聲。取消勾選會暫停，網站會記住設定。訪客可播嘅長度由 Spotify 決定。香港電視器樂編曲嘅獨立音源未獲核實。[配樂出處](https://collection.news/appledaily/articles/JJWDAB4VBNRIVZYRK7NVLPCVSA) · [Spotify 原曲](https://open.spotify.com/track/0KFnCHVyyzOQvWoJbjXi1n) · [香港 Apple Music](https://music.apple.com/hk/album/inkpot/298129966?i=298130088)
 
 ## 本機運行
 
